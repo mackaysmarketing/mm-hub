@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireHubAdmin } from "@/lib/auth";
+import { MackaysLogo } from "@/components/mackays-logo";
 import { Shield, Users, Boxes } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,9 @@ export default async function HubAdminLayout({
     <div className="flex min-h-screen">
       <aside className="flex h-screen w-[240px] flex-shrink-0 flex-col border-r border-sand bg-warmwhite">
         <div className="border-b border-sand px-4 py-5">
-          <div className="flex items-center gap-2 font-display text-lg font-bold text-forest">
-            <Shield size={20} />
+          <MackaysLogo width={140} />
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-stone">
+            <Shield size={12} />
             Hub Admin
           </div>
         </div>

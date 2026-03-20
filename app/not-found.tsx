@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { MackaysLogo } from "@/components/mackays-logo";
 
 export default function NotFound() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-parchment px-4">
       <div className="w-full max-w-md rounded-xl border border-sand bg-warmwhite p-8 text-center shadow-sm">
+        <div className="mb-4 flex justify-center">
+          <MackaysLogo width={160} />
+        </div>
         <h1 className="font-display text-4xl font-bold text-forest">404</h1>
         <h2 className="mt-2 font-display text-lg font-bold text-soil">
           Page not found

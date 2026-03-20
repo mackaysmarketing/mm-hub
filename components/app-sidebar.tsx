@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { MackaysLogo } from "@/components/mackays-logo";
 import type { ModuleConfig, MenuItem, HubUser } from "@/types/modules";
 import {
   LayoutDashboard,
@@ -84,10 +85,8 @@ export function AppSidebar({
       {/* Header */}
       <div className="flex items-center justify-between border-b border-sand px-4 py-5">
         <div>
-          <div className="font-display text-lg font-bold text-forest">
-            MACKAYS
-          </div>
-          <div className="text-xs text-stone">{moduleConfig.name}</div>
+          <MackaysLogo width={140} />
+          <div className="mt-1 text-xs text-stone">{moduleConfig.name}</div>
         </div>
         <div className="flex items-center gap-1">
           {hasMultipleModules && (

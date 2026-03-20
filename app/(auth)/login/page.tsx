@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPortalMode, getAllowedAuthMethods } from "@/lib/subdomain";
+import { MackaysLogo } from "@/components/mackays-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,10 +78,8 @@ export default function LoginPage() {
   if (mode === "grower") {
     return (
       <div className="w-full rounded-xl border border-sand bg-warmwhite p-10 shadow-sm">
-        <div className="mb-8 text-center">
-          <div className="mb-4 font-display text-2xl font-bold text-forest">
-            MACKAYS
-          </div>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <MackaysLogo width={200} className="mb-4" />
           <h1 className="font-display text-xl text-forest">Grower Portal</h1>
           <p className="mt-1 text-sm text-stone">
             Sign in to access your grower portal
@@ -140,13 +139,8 @@ export default function LoginPage() {
   if (mode === "hub") {
     return (
       <div className="w-full rounded-xl border border-sand bg-warmwhite p-10 shadow-sm">
-        <div className="mb-8 text-center">
-          <div className="mb-4 font-display text-2xl font-bold text-forest">
-            MM-Hub
-          </div>
-          <h1 className="font-display text-xl text-forest">
-            Mackays Marketing
-          </h1>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <MackaysLogo width={200} className="mb-4" />
           <p className="mt-1 text-sm text-stone">
             Sign in with your Mackays account
           </p>
@@ -172,10 +166,8 @@ export default function LoginPage() {
   return (
     <div className="w-full rounded-xl border border-sand bg-warmwhite p-10 shadow-sm">
       {/* Header */}
-      <div className="mb-8 text-center">
-        <div className="mb-4 font-display text-2xl font-bold text-forest">
-          MACKAYS
-        </div>
+      <div className="mb-8 flex flex-col items-center text-center">
+        <MackaysLogo width={200} className="mb-4" />
         <h1 className="font-display text-xl text-forest">Welcome</h1>
         <p className="mt-1 text-sm text-stone">
           Sign in to access your portal
