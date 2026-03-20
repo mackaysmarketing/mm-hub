@@ -1,0 +1,13 @@
+{
+  "regions": ["syd1"],
+  "crons": [
+    {
+      "path": "/api/cron/sync-freshtrack",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-netsuite",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}

@@ -18,6 +18,8 @@ import {
   LogOut,
   Sprout,
   ArrowLeftRight,
+  Menu,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -45,6 +47,8 @@ interface AppSidebarProps {
   moduleRole: string;
   capabilities: string[];
   hasMultipleModules: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export function AppSidebar({
@@ -55,6 +59,8 @@ export function AppSidebar({
   moduleRole,
   capabilities,
   hasMultipleModules,
+  isOpen,
+  onClose,
 }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -66,10 +72,14 @@ export function AppSidebar({
     router.refresh();
   }
 
+  function handleNavClick() {
+    onClose?.();
+  }
+
   const showManageSection =
     moduleRole === "admin" && capabilities.includes("manage_users");
 
-  return (
+  const sidebarContent = (
     <aside className="flex h-screen w-[260px] flex-shrink-0 flex-col border-r border-sand bg-warmwhite">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-sand px-4 py-5">
@@ -79,15 +89,25 @@ export function AppSidebar({
           </div>
           <div className="text-xs text-stone">{moduleConfig.name}</div>
         </div>
-        {hasMultipleModules && (
-          <Link
-            href="/"
-            className="rounded-md p-1.5 text-clay transition hover:bg-cream hover:text-soil"
-            title="Switch module"
+        <div className="flex items-center gap-1">
+          {hasMultipleModules && (
+            <Link
+              href="/"
+              className="rounded-md p-1.5 text-clay transition hover:bg-cream hover:text-soil"
+              title="Switch module"
+              onClick={handleNavClick}
+            >
+              <ArrowLeftRight size={16} />
+            </Link>
+          )}
+          {/* Close button on mobile */}
+          <button
+            onClick={onClose}
+            className="rounded-md p-1.5 text-clay transition hover:bg-cream hover:text-soil lg:hidden"
           >
-            <ArrowLeftRight size={16} />
-          </Link>
-        )}
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -95,12 +115,15 @@ export function AppSidebar({
         <ul className="space-y-0.5">
           {allowedMenuItems.map((item) => {
             const Icon = ICON_MAP[item.icon];
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+            const isActive =
+              pathname === item.href ||
+              pathname.startsWith(item.href + "/");
 
             return (
               <li key={item.id}>
                 <Link
                   href={item.href}
+                  onClick={handleNavClick}
                   className={cn(
                     "mx-2 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition",
                     isActive
@@ -126,16 +149,27 @@ export function AppSidebar({
             <ul className="space-y-0.5">
               {[
                 { href: "/admin/growers", label: "Growers", icon: "Users" },
-                { href: "/admin/qa-entry", label: "QA Entry", icon: "ClipboardCheck" },
-                { href: "/admin/sync-status", label: "Sync Status", icon: "RefreshCw" },
+                {
+                  href: "/admin/qa-entry",
+                  label: "QA Entry",
+                  icon: "ClipboardCheck",
+                },
+                {
+                  href: "/admin/sync-status",
+                  label: "Sync Status",
+                  icon: "RefreshCw",
+                },
               ].map((item) => {
                 const Icon = ICON_MAP[item.icon];
-                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                const isActive =
+                  pathname === item.href ||
+                  pathname.startsWith(item.href + "/");
 
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      onClick={handleNavClick}
                       className={cn(
                         "mx-2 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition",
                         isActive
@@ -170,5 +204,38 @@ export function AppSidebar({
         </button>
       </div>
     </aside>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar — always visible */}
+      <div className="hidden lg:block">{sidebarContent}</div>
+
+      {/* Mobile sidebar — overlay drawer */}
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-soil/40 lg:hidden"
+            onClick={onClose}
+          />
+          <div className="fixed inset-y-0 left-0 z-50 lg:hidden">
+            {sidebarContent}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** Hamburger button for mobile — place in top bar */
+export function SidebarTrigger({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-md p-1.5 text-bark transition hover:bg-cream hover:text-soil lg:hidden"
+      aria-label="Open menu"
+    >
+      <Menu size={22} />
+    </button>
   );
 }

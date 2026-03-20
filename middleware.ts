@@ -1,8 +1,26 @@
 import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { getPortalMode } from "@/lib/subdomain";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  // Refresh the Supabase session first
+  const response = await updateSession(request);
+
+  // Detect portal mode from hostname
+  const hostname = request.headers.get("host") || "localhost";
+  const mode = getPortalMode(hostname);
+
+  // Set portal mode header so pages/layouts can read it
+  response.headers.set("x-portal-mode", mode);
+
+  const { pathname } = request.nextUrl;
+
+  // Grower mode: block hub-admin routes
+  if (mode === "grower" && pathname.startsWith("/hub-admin")) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  return response;
 }
 
 export const config = {
