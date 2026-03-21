@@ -61,6 +61,9 @@ export default async function GrowerPortalLayout({
       moduleRole={context.moduleRole}
       capabilities={context.capabilities}
       hasMultipleModules={hasMultipleModules}
+      growerId={context.growerId}
+      farmIds={context.farmIds}
+      financialAccess={context.financialAccess}
     >
       {children}
     </PortalShell>

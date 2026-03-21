@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getPortalAccessContext, getFarmFilter } from "@/lib/portal-access";
+import { stripFinancials } from "@/lib/financial-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +44,13 @@ export async function GET(request: Request) {
   const growerId = searchParams.get("growerId");
   const timeRange = searchParams.get("timeRange") ?? "12W";
   const produceType = searchParams.get("produceType");
+  const farmId = searchParams.get("farmId");
 
   const days = TIME_RANGE_DAYS[timeRange] ?? 84;
   const periodStart = new Date(Date.now() - days * 86400000);
+
+  const accessCtx = await getPortalAccessContext();
+  const farmFilter = getFarmFilter(accessCtx, farmId);
 
   const supabase = createClient();
 
@@ -59,6 +65,7 @@ export async function GET(request: Request) {
   if (growerId) query = query.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     query = query.eq("produce_category", produceType);
+  if (farmFilter) query = query.in("farm_id", farmFilter);
 
   const { data: rows } = await query;
 
@@ -96,12 +103,10 @@ export async function GET(request: Request) {
 
     const week = weekMap.get(weekKey)!;
 
-    // Aggregate into customer+grade+category groups
     const customer = row.customer_name ?? "Unknown";
     const grade = row.grade ?? "—";
     const category = row.produce_category ?? "Other";
 
-    // Find existing row or create new
     const existing = week.rows.find(
       (r) =>
         r.customer === customer &&
@@ -113,7 +118,6 @@ export async function GET(request: Request) {
       existing.quantity += qty;
       existing.weightKg += wkg;
       existing.totalAmount += tAmount;
-      // Recalculate weighted averages
       existing.unitPrice =
         existing.quantity > 0 ? existing.totalAmount / existing.quantity : 0;
       existing.pricePerKg =
@@ -136,8 +140,7 @@ export async function GET(request: Request) {
     week.totalAmount += tAmount;
   }
 
-  // Convert to sorted array (most recent first)
-  const result = Array.from(weekMap.entries())
+  let result = Array.from(weekMap.entries())
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([weekKey, week]) => ({
       week: weekKey,
@@ -159,6 +162,11 @@ export async function GET(request: Request) {
         }))
         .sort((a, b) => b.totalAmount - a.totalAmount),
     }));
+
+  // Apply financial access filtering
+  if (accessCtx.financialAccess["Sales & Pricing"] === false) {
+    result = stripFinancials(result);
+  }
 
   return NextResponse.json(result);
 }

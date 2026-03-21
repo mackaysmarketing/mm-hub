@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getPortalAccessContext, getFarmFilter } from "@/lib/portal-access";
+import { stripFinancials } from "@/lib/financial-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +17,16 @@ export async function GET(request: Request) {
   const growerId = searchParams.get("growerId");
   const timeRange = searchParams.get("timeRange") ?? "12W";
   const produceType = searchParams.get("produceType");
+  const farmId = searchParams.get("farmId");
 
   const days = TIME_RANGE_DAYS[timeRange] ?? 84;
   const now = new Date();
   const periodStart = new Date(now.getTime() - days * 86400000);
   const prevPeriodStart = new Date(periodStart.getTime() - days * 86400000);
+
+  // Get portal access context for farm filtering & financial access
+  const accessCtx = await getPortalAccessContext();
+  const farmFilter = getFarmFilter(accessCtx, farmId);
 
   const supabase = createClient();
 
@@ -32,6 +39,7 @@ export async function GET(request: Request) {
   if (growerId) currentQ = currentQ.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     currentQ = currentQ.eq("produce_category", produceType);
+  if (farmFilter) currentQ = currentQ.in("farm_id", farmFilter);
 
   // Previous period query
   let prevQ = supabase
@@ -42,6 +50,7 @@ export async function GET(request: Request) {
   if (growerId) prevQ = prevQ.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     prevQ = prevQ.eq("produce_category", produceType);
+  if (farmFilter) prevQ = prevQ.in("farm_id", farmFilter);
 
   const [{ data: currentRows }, { data: prevRows }] = await Promise.all([
     currentQ,
@@ -121,7 +130,7 @@ export async function GET(request: Request) {
     return ((curr - previous) / previous) * 100;
   }
 
-  return NextResponse.json({
+  let result = {
     grossSales: {
       value: currentGross,
       change: pctChange(currentGross, prevGross),
@@ -138,5 +147,12 @@ export async function GET(request: Request) {
       value: currentVolume,
       change: pctChange(currentVolume, prevVolume),
     },
-  });
+  };
+
+  // Apply financial access filtering
+  if (accessCtx.financialAccess["Dashboard"] === false) {
+    result = stripFinancials(result);
+  }
+
+  return NextResponse.json(result);
 }

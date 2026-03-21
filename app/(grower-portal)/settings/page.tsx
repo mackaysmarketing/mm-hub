@@ -39,6 +39,16 @@ const ADMIN_LINKS = [
   },
 ];
 
+const GROWER_ADMIN_LINKS = [
+  {
+    href: "/settings/users",
+    label: "User Management",
+    description: "Create and manage users for your grower portal",
+    icon: Users,
+    capability: "manage_grower_users",
+  },
+];
+
 export default function SettingsPage() {
   const { session, loading } = useUser();
   const router = useRouter();
@@ -52,6 +62,9 @@ export default function SettingsPage() {
 
   const visibleAdminLinks = ADMIN_LINKS.filter(
     (link) => isHubAdmin || capabilities.includes(link.capability)
+  );
+  const visibleGrowerAdminLinks = GROWER_ADMIN_LINKS.filter(
+    (link) => capabilities.includes(link.capability)
   );
 
   async function handleSignOut() {
@@ -130,7 +143,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Admin links */}
+      {/* Admin links (module admin) */}
       {visibleAdminLinks.length > 0 && (
         <div className="rounded-xl border border-sand bg-warmwhite p-6">
           <h2 className="mb-4 text-sm font-semibold text-soil">
@@ -138,6 +151,35 @@ export default function SettingsPage() {
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {visibleAdminLinks.map((link) => {
+              const Icon = link.icon;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="flex items-start gap-3 rounded-lg border border-sand p-4 transition-colors hover:bg-cream"
+                >
+                  <Icon className="mt-0.5 h-5 w-5 shrink-0 text-forest" />
+                  <div>
+                    <p className="text-sm font-medium text-soil">
+                      {link.label}
+                    </p>
+                    <p className="text-xs text-stone">{link.description}</p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Grower admin links */}
+      {visibleGrowerAdminLinks.length > 0 && (
+        <div className="rounded-xl border border-sand bg-warmwhite p-6">
+          <h2 className="mb-4 text-sm font-semibold text-soil">
+            Grower Administration
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {visibleGrowerAdminLinks.map((link) => {
               const Icon = link.icon;
               return (
                 <Link

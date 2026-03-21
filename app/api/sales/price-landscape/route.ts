@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getPortalAccessContext, getFarmFilter } from "@/lib/portal-access";
+import { stripFinancials } from "@/lib/financial-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +25,13 @@ export async function GET(request: Request) {
   const growerId = searchParams.get("growerId");
   const timeRange = searchParams.get("timeRange") ?? "12W";
   const produceType = searchParams.get("produceType");
+  const farmId = searchParams.get("farmId");
 
   const days = TIME_RANGE_DAYS[timeRange] ?? 84;
   const periodStart = new Date(Date.now() - days * 86400000);
+
+  const accessCtx = await getPortalAccessContext();
+  const farmFilter = getFarmFilter(accessCtx, farmId);
 
   const supabase = createClient();
 
@@ -40,10 +46,10 @@ export async function GET(request: Request) {
   if (growerId) query = query.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     query = query.eq("produce_category", produceType);
+  if (farmFilter) query = query.in("farm_id", farmFilter);
 
   const { data: rows } = await query;
 
-  // Group by week → customer (volume + weighted price)
   const weekMap = new Map<
     string,
     Map<string, { volume: number; totalAmount: number }>
@@ -83,7 +89,6 @@ export async function GET(request: Request) {
     }
   }
 
-  // Build weekly data with per-customer volume and overall avgPrice
   const weeks = Array.from(weekMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([week, customerMap]) => {
@@ -114,7 +119,7 @@ export async function GET(request: Request) {
       };
     });
 
-  return NextResponse.json({
+  let result = {
     weeks,
     summary: {
       avgPricePerKg:
@@ -124,5 +129,12 @@ export async function GET(request: Request) {
       minPrice: globalMinPrice === Infinity ? 0 : globalMinPrice,
       maxPrice: globalMaxPrice === -Infinity ? 0 : globalMaxPrice,
     },
-  });
+  };
+
+  // Apply financial access filtering
+  if (accessCtx.financialAccess["Sales & Pricing"] === false) {
+    result = stripFinancials(result);
+  }
+
+  return NextResponse.json(result);
 }

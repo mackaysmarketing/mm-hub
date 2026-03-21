@@ -24,6 +24,14 @@ INSERT INTO public.growers (id, name, code, freshtrack_code, abn, email, active)
 --    SELECT id, 'grower-portal', 'grower', '{"grower_id":"a1000000-0000-0000-0000-000000000001","allowed_menu_items":["Dashboard","Sales & Pricing","Remittances","Documents"],"capabilities":[]}'::jsonb
 --    FROM public.hub_users WHERE email = 'grower@test.com';
 
+-- Sample farms
+INSERT INTO public.farms (id, grower_id, name, code, region, active) VALUES
+  ('f1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'Tully River Block A', 'TRB-A', 'Tully', true),
+  ('f1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'Tully River Block B', 'TRB-B', 'Tully', true),
+  ('f1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', 'Lakeland Station', 'LKS', 'Lakeland', true),
+  ('f1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000002', 'Mission Beach Farm', 'MBF', 'Mission Beach', true),
+  ('f1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000002', 'El Arish Property', 'EAP', 'El Arish', true);
+
 -- Sample ft_consignments
 INSERT INTO public.ft_consignments (ft_id, grower_id, entity_code, consignment_date, sale_date, customer_name, product_name, produce_category, quantity, weight_kg, unit_price, total_amount, status) VALUES
   (1001, 'a1000000-0000-0000-0000-000000000001', 'NQBC001', '2026-03-10', '2026-03-10', 'Coles', 'Bananas 13.5kg', 'Banana', 80, 1080.00, 22.50, 1800.00, 'Completed'),

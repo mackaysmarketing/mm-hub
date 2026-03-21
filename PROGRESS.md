@@ -91,10 +91,10 @@
 ### Hub Admin — User Management (COMPLETE)
 - [x] Users list API (`/api/hub-admin/users`) — GET all users with module_access, search by name/email; POST create user via Supabase Auth admin
 - [x] Single user API (`/api/hub-admin/users/[id]`) — GET detail, PATCH update (name/hub_role/active + auth ban/unban), DELETE soft-deactivate
-- [x] Module assignments API (`/api/hub-admin/users/[id]/modules`) — POST assign (upsert with role defaults), PATCH update (role/config/active), DELETE remove
+- [x] Module assignments API (`/api/hub-admin/users/[id]/modules`) — POST assign (upsert with role defaults + farm_ids + financial_access), PATCH update (role/config/active), DELETE remove
 - [x] Growers list API (`/api/hub-admin/growers`) — active growers for grower dropdown
 - [x] Users list page — Shadcn Table with auth/role/module/status badges, relative time, search, Add User dialog
-- [x] User edit page — editable details card, module assignments with role selector/menu item checkboxes/capability checkboxes/grower dropdown, danger zone with deactivate confirmation
+- [x] User edit page — editable details card, module assignments with role selector/menu item checkboxes/capability checkboxes/grower dropdown/grower_admin info text, danger zone with deactivate confirmation
 
 ### Grower Management (COMPLETE)
 - [x] Grower list/create API (`/api/grower-portal/admin/growers`) — GET all growers (requires view_all_growers), POST create (requires manage_users)
@@ -112,7 +112,7 @@
 - [x] Sync status page — FreshTrack + NetSuite status cards with "Sync Now" buttons, sync history table with source/type/status/records/duration/error filterable by source, collapsible field mapping viewer showing source→target column mapping + transform rules per step
 
 ### Settings (COMPLETE)
-- [x] Settings page — account info (name, email, auth provider, hub role, module role), admin links (Grower Management, QA Entry, Sync Status — shown by capability), sign out button
+- [x] Settings page — account info (name, email, auth provider, hub role, module role), admin links (Grower Management, QA Entry, Sync Status — shown by capability), grower admin links (User Management — shown by manage_grower_users capability), sign out button
 
 ## Phase 6: Polish, Mobile & Deployment (COMPLETE)
 
@@ -138,10 +138,10 @@
 - [x] `components/skeleton-card.tsx` — reusable skeleton with stat/chart/table/list variants
 
 ### Mobile Responsiveness (COMPLETE)
-- [x] `components/app-sidebar.tsx` — hidden on mobile by default, overlay drawer with backdrop on open, auto-close on nav click, exported `SidebarTrigger` hamburger button
+- [x] `components/app-sidebar.tsx` — hidden on mobile by default, overlay drawer with backdrop on open, auto-close on nav click, exported `SidebarTrigger` hamburger button, grower admin "Users" link
 - [x] `components/top-bar.tsx` — accepts sidebarTrigger and badge slots
-- [x] `components/portal-shell.tsx` — client wrapper managing sidebar open/close state, mobile top bar with hamburger + freshness badge, desktop freshness badge
-- [x] `app/(grower-portal)/layout.tsx` — uses `PortalShell` for mobile-aware layout
+- [x] `components/portal-shell.tsx` — client wrapper managing sidebar state + freshness badge + farm selector, exports `usePortalData()` context hook
+- [x] `app/(grower-portal)/layout.tsx` — uses `PortalShell` for mobile-aware layout, passes farm/financial context
 
 ### Data Freshness (COMPLETE)
 - [x] `components/data-freshness-badge.tsx` — relative time display with green/harvest/blaze status dot, auto-refreshes every 60s
@@ -153,34 +153,79 @@
 - [x] `.env.local.example` — all env vars documented with comments, including subdomain routing vars
 - [x] Storage bucket comment in document upload route
 
+## Phase 7: Farm-Level Access & Grower Admin (COMPLETE)
+
+### Database (migration 00004)
+- [x] `farms` table — linked to growers, synced from FreshTrack (name, code, freshtrack_farm_id, region, location)
+- [x] RLS policies: hub admin reads all, portal staff reads all, grower_admin reads own grower farms, grower user reads assigned farms only
+- [x] `farm_id` column added to ft_consignments, ft_orders, ft_pallets, ft_dispatch, ft_charges, ft_stock (with indexes)
+- [x] `get_portal_farm_ids()` RLS helper function — returns accessible farm UUIDs (null = all farms)
+- [x] Grower admin RLS: `grower_admin_read_grower_users` policy on module_access for same-grower user visibility
+- [x] Farm sync config row (step 9) seeded for FreshTrack farm sync
+
+### Access Control Model
+- [x] New `grower_admin` role — between staff and grower, manages users within their grower entity
+- [x] `GrowerPortalConfig` extended: `farm_ids` (null = all, array = specific), `financial_access` (per menu item boolean)
+- [x] `GrowerPortalContext` extended: `farmIds`, `financialAccess` fields
+- [x] `lib/portal-access.ts` — `getPortalAccessContext()` + `getFarmFilter()` shared helpers for API routes
+- [x] `lib/financial-filter.ts` — `stripFinancials()` recursively nulls monetary fields, `getPageNameFromPath()` maps routes to menu items
+
+### Farm Context & Selector
+- [x] `hooks/use-farm-context.ts` — fetches accessible farms, manages selectedFarmId state, handles single-farm lock
+- [x] `components/farm-selector.tsx` — dropdown with "All farms" + individual farm names with region
+- [x] `components/portal-shell.tsx` — provides `PortalDataContext` (selectedFarmId, financialAccess) via React context, `usePortalData()` hook
+
+### API Farm Filtering & Financial Access
+- [x] `/api/dashboard/stats` — farm_id filter, financial access stripping
+- [x] `/api/dashboard/volume` — farm_id filter
+- [x] `/api/dashboard/customer-mix` — farm_id filter
+- [x] `/api/sales/weekly-breakdown` — farm_id filter, financial access stripping
+- [x] `/api/sales/price-landscape` — farm_id filter, financial access stripping
+- [x] `/api/remittances` — financial access stripping (remittances are grower-level, not farm-level)
+
+### Grower Admin User Management
+- [x] `app/api/grower-portal/admin/users/route.ts` — GET (list grower's users), POST (create user with Auth + module_access), PATCH (update farm/menu/financial config), DELETE (deactivate)
+- [x] `app/api/grower-portal/admin/farms/route.ts` — GET (list grower's farms), POST (hub admin create farm manually)
+- [x] `app/(grower-portal)/settings/users/page.tsx` — full user management page with add/edit dialogs, farm checkboxes, menu items, per-page financial toggles, deactivate
+- [x] Settings page — grower admin links section with "User Management" card
+
+### FreshTrack Sync Updates
+- [x] Farm ID resolution during sync (freshtrack_farm_id → farms.id)
+- [x] Farm lookup map loaded alongside grower map in sync-freshtrack route
+
+### Hub Admin Updates
+- [x] Module assignment POST defaults: `farm_ids: null`, `financial_access` auto-populated per role
+- [x] User edit page: grower dropdown shown for both `grower` and `grower_admin` roles, info text for grower_admin
+
+### Seed Data
+- [x] 5 sample farms across 2 growers (Tully River Block A/B, Lakeland Station, Mission Beach Farm, El Arish Property)
+
 ### Architecture Decisions
+- **Farm-level access:** Farms belong to growers. A user's `farm_ids` in module_access config controls which farms they see. null = all farms (admin/staff/grower_admin default). Array = specific farms only. Single-farm users get a flat experience (no farm switcher).
+- **Financial access:** Per-menu-item boolean in `financial_access` config. When false, API routes strip monetary fields from responses (replaced with null, not 0). UI shows "—" or "Restricted" for null financial values.
+- **Grower admin role:** New role `grower_admin` sits between staff and grower. Can manage users within their own grower entity from the grower subdomain (/settings/users). Cannot see other growers, access hub admin, or change their own role.
+- **Farm selector:** Appears in the portal shell top bar (both mobile and desktop). Only shown when user has 2+ farms. "All farms" = consolidated view. Portal data context provides `selectedFarmId` and `financialAccess` to child pages.
 - **Subdomain routing:** One Next.js app, one Vercel deployment serving two subdomains. Portal mode detected in middleware via `request.headers.get("host")`. `lib/subdomain.ts` provides `getPortalMode()` used by middleware (server-side), login page (client-side via `window.location.hostname`), and server components (via `headers().get("host")`). Grower subdomain restricts to email/password auth and grower-portal module only. Hub subdomain restricts to Microsoft SSO and allows all modules. Localhost shows everything for development. Env vars `NEXT_PUBLIC_GROWER_DOMAIN` and `NEXT_PUBLIC_HUB_DOMAIN` allow custom domain overrides without code changes.
 
 ### File Structure
 ```
-lib/subdomain.ts                           — Portal mode detection utility
-middleware.ts                              — Subdomain routing + portal mode header
-app/(auth)/login/page.tsx                  — Subdomain-aware login (3 layouts)
-app/(auth)/callback/route.ts               — Subdomain-aware post-auth redirect
-app/page.tsx                               — Subdomain-aware root routing
-app/(grower-portal)/layout.tsx             — Subdomain-aware sidebar config
-app/(grower-portal)/error.tsx              — Grower portal error boundary
-app/(grower-portal)/loading.tsx            — Grower portal loading state
-app/(hub-admin)/error.tsx                  — Hub admin error boundary
-app/(auth)/error.tsx                       — Auth error boundary
-app/not-found.tsx                          — Custom 404 page
-app/api/sync-status/latest/route.ts        — Data freshness API
-components/app-sidebar.tsx                 — Mobile-responsive sidebar + SidebarTrigger
-components/top-bar.tsx                     — Top bar with slot props
-components/portal-shell.tsx                — Client shell with sidebar state + freshness badge
-components/skeleton-card.tsx               — Reusable skeleton card (stat/chart/table/list)
-components/data-freshness-badge.tsx        — Data freshness indicator badge
+supabase/migrations/00004_farms_and_grower_admin.sql — Farms table, farm_id columns, RLS, get_portal_farm_ids()
+lib/portal-access.ts                                  — Shared API access context (growerId, farmIds, financialAccess)
+lib/financial-filter.ts                               — stripFinancials() + getPageNameFromPath()
+hooks/use-farm-context.ts                             — Client farm context hook (farms, selectedFarmId, switcher logic)
+components/farm-selector.tsx                          — Farm dropdown selector component
+components/portal-shell.tsx                           — Updated with PortalDataContext (farm + financial)
+app/api/grower-portal/admin/users/route.ts            — Grower admin user CRUD API
+app/api/grower-portal/admin/farms/route.ts            — Farm list/create API
+app/(grower-portal)/settings/users/page.tsx           — Grower admin user management page
 ```
 
 ### Remaining
 - [ ] Hub admin modules page
 - [ ] Forecasting page
 - [ ] Orders page / Dispatch tracking / Stock on hand
+- [ ] Dashboard page: pass selectedFarmId to API calls from usePortalData() context
+- [ ] Remittances detail: financial access filtering on detail API
 
 ---
 
@@ -208,3 +253,5 @@ components/data-freshness-badge.tsx        — Data freshness indicator badge
 - Test end-to-end sync with real data (trigger manual sync from Sync Status page)
 - Mobile QA pass — test all pages on iPhone/Android at 375px and 768px breakpoints
 - Set up monitoring/alerting for sync failures (Vercel → Monitoring or external: Datadog, PagerDuty)
+- Wire up `usePortalData().selectedFarmId` in dashboard/sales pages for farm-level filtering in client
+- Test grower_admin user creation flow end-to-end

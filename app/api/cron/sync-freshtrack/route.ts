@@ -72,6 +72,20 @@ export async function GET(request: Request) {
       }
     }
 
+    // d2. Load farm lookup map: freshtrack_farm_id → farm uuid
+    const { data: farms } = await supabase
+      .from("farms")
+      .select("id, freshtrack_farm_id");
+
+    const farmMap = new Map<number, string>();
+    if (farms) {
+      for (const f of farms) {
+        if (f.freshtrack_farm_id) {
+          farmMap.set(f.freshtrack_farm_id, f.id);
+        }
+      }
+    }
+
     // e. Process each enabled sync step
     for (const config of syncConfigs) {
       const stepResult: SyncStepResult = {
@@ -104,6 +118,13 @@ export async function GET(request: Request) {
           if (growerResolveField) {
             const entityCode = String(sourceRow[growerResolveField] ?? "");
             row.grower_id = growerMap.get(entityCode) ?? null;
+          }
+
+          // Resolve farm_id if source row has a farm identifier
+          // Check for farm_id or freshtrack_farm_id in the source row
+          const sourceFarmId = sourceRow.farm_id ?? sourceRow.freshtrack_farm_id;
+          if (sourceFarmId && typeof sourceFarmId === "number") {
+            row.farm_id = farmMap.get(sourceFarmId) ?? null;
           }
 
           // Add sync timestamp

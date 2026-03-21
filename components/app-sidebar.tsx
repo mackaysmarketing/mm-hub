@@ -79,6 +79,9 @@ export function AppSidebar({
 
   const showManageSection =
     moduleRole === "admin" && capabilities.includes("manage_users");
+  const showGrowerAdminSection =
+    moduleRole === "grower_admin" &&
+    capabilities.includes("manage_grower_users");
 
   const sidebarContent = (
     <aside className="flex h-screen w-[260px] flex-shrink-0 flex-col border-r border-sand bg-warmwhite">
@@ -182,6 +185,34 @@ export function AppSidebar({
                   </li>
                 );
               })}
+            </ul>
+          </>
+        )}
+
+        {showGrowerAdminSection && (
+          <>
+            <div className="mx-4 mt-6 mb-2 border-t border-sand pt-4">
+              <span className="text-xs font-medium uppercase tracking-wider text-clay">
+                Admin
+              </span>
+            </div>
+            <ul className="space-y-0.5">
+              <li>
+                <Link
+                  href="/settings/users"
+                  onClick={handleNavClick}
+                  className={cn(
+                    "mx-2 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition",
+                    pathname === "/settings/users" ||
+                      pathname.startsWith("/settings/users/")
+                      ? "border-l-[3px] border-canopy bg-parchment font-medium text-forest"
+                      : "text-bark hover:bg-cream hover:text-soil"
+                  )}
+                >
+                  <Users size={18} />
+                  Users
+                </Link>
+              </li>
             </ul>
           </>
         )}

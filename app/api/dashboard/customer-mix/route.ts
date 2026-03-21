@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getPortalAccessContext, getFarmFilter } from "@/lib/portal-access";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +24,13 @@ export async function GET(request: Request) {
   const growerId = searchParams.get("growerId");
   const timeRange = searchParams.get("timeRange") ?? "12W";
   const produceType = searchParams.get("produceType");
+  const farmId = searchParams.get("farmId");
 
   const days = TIME_RANGE_DAYS[timeRange] ?? 84;
   const periodStart = new Date(Date.now() - days * 86400000);
+
+  const accessCtx = await getPortalAccessContext();
+  const farmFilter = getFarmFilter(accessCtx, farmId);
 
   const supabase = createClient();
 
@@ -37,10 +42,10 @@ export async function GET(request: Request) {
   if (growerId) query = query.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     query = query.eq("produce_category", produceType);
+  if (farmFilter) query = query.in("farm_id", farmFilter);
 
   const { data: rows } = await query;
 
-  // Aggregate by customer
   const customerVolumes = new Map<string, number>();
   let totalVolume = 0;
 
@@ -51,7 +56,6 @@ export async function GET(request: Request) {
     totalVolume += volume;
   }
 
-  // Map a customer name to a colour — match known names case-insensitively
   function getCustomerColor(name: string): string {
     const lower = name.toLowerCase();
     for (const [key, color] of Object.entries(CUSTOMER_COLORS)) {
@@ -64,7 +68,10 @@ export async function GET(request: Request) {
     .map(([customer, volume]) => ({
       customer,
       volume: Math.round(volume),
-      percentage: totalVolume > 0 ? Math.round((volume / totalVolume) * 1000) / 10 : 0,
+      percentage:
+        totalVolume > 0
+          ? Math.round((volume / totalVolume) * 1000) / 10
+          : 0,
       color: getCustomerColor(customer),
     }))
     .sort((a, b) => b.volume - a.volume);

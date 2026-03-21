@@ -56,13 +56,31 @@ export interface UserSession {
 
 export interface GrowerPortalConfig {
   grower_id: string | null;
+  farm_ids: string[] | null;              // null = all farms, array = specific farms only
   allowed_menu_items: string[];
+  financial_access: Record<string, boolean>;  // per menu item: true = see financials, false = hide
   capabilities: string[];
 }
 
 export interface GrowerPortalContext {
-  moduleRole: "admin" | "staff" | "grower";
+  moduleRole: "admin" | "staff" | "grower_admin" | "grower";
   growerId: string | null;
+  farmIds: string[] | null;
   allowedMenuItems: string[];
+  financialAccess: Record<string, boolean>;
   capabilities: string[];
+}
+
+export interface Farm {
+  id: string;
+  grower_id: string;
+  name: string;
+  code: string | null;
+  freshtrack_farm_id: number | null;
+  freshtrack_entity_code: string | null;
+  location: string | null;
+  region: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
 }

@@ -595,8 +595,9 @@ function ModuleCard({
         </div>
       )}
 
-      {/* Grower selector (for grower-portal with grower role) */}
-      {mod.module_id === "grower-portal" && mod.module_role === "grower" && (
+      {/* Grower selector (for grower-portal with grower/grower_admin role) */}
+      {mod.module_id === "grower-portal" &&
+        (mod.module_role === "grower" || mod.module_role === "grower_admin") && (
         <div className="mt-3">
           <label className="mb-1.5 block text-xs font-medium text-bark">
             Grower
@@ -613,6 +614,11 @@ function ModuleCard({
               </option>
             ))}
           </select>
+          {mod.module_role === "grower_admin" && (
+            <p className="mt-1.5 text-xs text-stone">
+              This user will be able to manage grower portal users for this grower.
+            </p>
+          )}
         </div>
       )}
 

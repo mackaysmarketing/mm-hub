@@ -39,9 +39,20 @@ export async function POST(
     module_role
   );
 
+  // Build default financial_access (all true for admin/staff, all false for grower)
+  const defaultFinancialAccess: Record<string, boolean> = {};
+  for (const item of defaultMenuItems) {
+    defaultFinancialAccess[item] =
+      module_role === "admin" ||
+      module_role === "staff" ||
+      module_role === "grower_admin";
+  }
+
   const finalConfig = {
     allowed_menu_items: defaultMenuItems,
     capabilities: defaultCapabilities,
+    farm_ids: null, // null = all farms by default
+    financial_access: defaultFinancialAccess,
     ...config,
   };
 
