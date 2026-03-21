@@ -1,12 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Extracts farm_ids and financial_access from the current user's session.
- * Used by API routes to apply farm-level filtering and financial access control.
+ * Extracts grower_group_id, grower_ids, and financial_access from the current user's session.
+ * Used by API routes to apply grower-level filtering and financial access control.
  */
 export interface PortalAccessContext {
-  growerId: string | null;
-  farmIds: string[] | null;      // null = all farms
+  growerGroupId: string | null;
+  growerIds: string[] | null;     // null = all growers in group
   financialAccess: Record<string, boolean>;
   moduleRole: string;
   capabilities: string[];
@@ -20,8 +20,8 @@ export async function getPortalAccessContext(): Promise<PortalAccessContext> {
 
   if (!user) {
     return {
-      growerId: null,
-      farmIds: null,
+      growerGroupId: null,
+      growerIds: null,
       financialAccess: {},
       moduleRole: "",
       capabilities: [],
@@ -46,8 +46,8 @@ export async function getPortalAccessContext(): Promise<PortalAccessContext> {
 
     if (hubUser?.hub_role === "hub_admin") {
       return {
-        growerId: null,
-        farmIds: null,
+        growerGroupId: null,
+        growerIds: null,
         financialAccess: {},
         moduleRole: "admin",
         capabilities: ["manage_users", "view_all_growers", "enter_qa", "trigger_sync"],
@@ -55,8 +55,8 @@ export async function getPortalAccessContext(): Promise<PortalAccessContext> {
     }
 
     return {
-      growerId: null,
-      farmIds: null,
+      growerGroupId: null,
+      growerIds: null,
       financialAccess: {},
       moduleRole: "",
       capabilities: [],
@@ -66,8 +66,8 @@ export async function getPortalAccessContext(): Promise<PortalAccessContext> {
   const config = access.config as Record<string, unknown>;
 
   return {
-    growerId: (config.grower_id as string) || null,
-    farmIds: (config.farm_ids as string[] | null) ?? null,
+    growerGroupId: (config.grower_group_id as string) || null,
+    growerIds: (config.grower_ids as string[] | null) ?? null,
     financialAccess: (config.financial_access as Record<string, boolean>) || {},
     moduleRole: access.module_role,
     capabilities: (config.capabilities as string[]) || [],
@@ -75,22 +75,26 @@ export async function getPortalAccessContext(): Promise<PortalAccessContext> {
 }
 
 /**
- * Builds a Supabase query filter for farm_id based on the user's access.
- * Returns the farmIds to filter by, or null if no filtering needed.
+ * Builds a grower_id filter based on the user's access.
+ * Returns the growerIds to filter by, or null if no filtering needed.
+ *
+ * When growerIds is null (all growers in group): caller should filter by grower_group_id
+ * via growers table join.
+ * When growerIds has values: filter by grower_id IN (growerIds).
  */
-export function getFarmFilter(
+export function getGrowerFilter(
   context: PortalAccessContext,
-  requestFarmId?: string | null
+  requestGrowerId?: string | null
 ): string[] | null {
-  // If a specific farm is requested (from farm selector), use that
-  if (requestFarmId) {
-    // Validate the user can access this farm
-    if (context.farmIds && !context.farmIds.includes(requestFarmId)) {
+  // If a specific grower is requested (from grower switcher), use that
+  if (requestGrowerId) {
+    // Validate the user can access this grower
+    if (context.growerIds && !context.growerIds.includes(requestGrowerId)) {
       return []; // Empty array = no access
     }
-    return [requestFarmId];
+    return [requestGrowerId];
   }
 
-  // Otherwise, use the user's assigned farm_ids (null = all farms)
-  return context.farmIds;
+  // Otherwise, use the user's assigned grower_ids (null = all growers in group)
+  return context.growerIds;
 }

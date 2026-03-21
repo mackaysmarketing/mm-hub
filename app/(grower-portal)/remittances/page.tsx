@@ -45,11 +45,10 @@ export default function RemittancesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+  // Grower scoping is handled server-side via getGrowerFilter()
   const portalAccess = session?.moduleAccess.find(
     (m) => m.module_id === "grower-portal"
   );
-  const growerId =
-    (portalAccess?.config as { grower_id?: string })?.grower_id ?? undefined;
   const moduleRole = portalAccess?.module_role;
   const isStaffOrAdmin =
     moduleRole === "admin" || moduleRole === "staff";
@@ -64,13 +63,12 @@ export default function RemittancesPage() {
 
   function buildParams(): string {
     const params = new URLSearchParams();
-    if (growerId) params.set("growerId", growerId);
     if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
     return params.toString();
   }
 
   const { data: remittances, isLoading } = useQuery<RemittanceListItem[]>({
-    queryKey: ["remittances-list", growerId, debouncedSearch],
+    queryKey: ["remittances-list", debouncedSearch],
     queryFn: () =>
       fetch(`/api/remittances?${buildParams()}`).then((r) => r.json()),
   });

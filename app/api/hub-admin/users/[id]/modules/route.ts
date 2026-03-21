@@ -51,7 +51,7 @@ export async function POST(
   const finalConfig = {
     allowed_menu_items: defaultMenuItems,
     capabilities: defaultCapabilities,
-    farm_ids: null, // null = all farms by default
+    grower_ids: null, // null = all growers by default
     financial_access: defaultFinancialAccess,
     ...config,
   };

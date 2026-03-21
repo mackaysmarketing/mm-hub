@@ -27,7 +27,7 @@ import { StatCard } from "@/components/stat-card";
 import { TimeRangeSelector } from "@/components/time-range-selector";
 import { ProduceTypeSelector } from "@/components/produce-type-selector";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUser } from "@/hooks/use-user";
+
 
 // Produce type definitions with brand colours
 const PRODUCE_TYPES = [
@@ -97,21 +97,12 @@ interface OrderEntry {
 }
 
 export default function DashboardPage() {
-  const { session } = useUser();
   const [timeRange, setTimeRange] = useState("12W");
   const [produceType, setProduceType] = useState("all");
 
-  // Resolve grower context from session
-  const portalAccess = session?.moduleAccess.find(
-    (m) => m.module_id === "grower-portal"
-  );
-  const growerId =
-    (portalAccess?.config as { grower_id?: string })?.grower_id ?? undefined;
-
-  // Build query params
+  // Build query params — grower scoping is handled server-side via getGrowerFilter()
   function buildParams(): string {
     const params = new URLSearchParams();
-    if (growerId) params.set("growerId", growerId);
     params.set("timeRange", timeRange);
     if (produceType !== "all") params.set("produceType", produceType);
     return params.toString();
@@ -146,14 +137,9 @@ export default function DashboardPage() {
   const { data: recentOrders, isLoading: ordersLoading } = useQuery<
     OrderEntry[]
   >({
-    queryKey: ["dashboard-recent-orders", growerId],
-    queryFn: () => {
-      const p = new URLSearchParams();
-      if (growerId) p.set("growerId", growerId);
-      return fetch(`/api/dashboard/recent-orders?${p.toString()}`).then((r) =>
-        r.json()
-      );
-    },
+    queryKey: ["dashboard-recent-orders"],
+    queryFn: () =>
+      fetch("/api/dashboard/recent-orders").then((r) => r.json()),
   });
 
   // Build stacked bar chart data: flatten weeks into rows with customer columns

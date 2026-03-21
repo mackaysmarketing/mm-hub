@@ -30,7 +30,7 @@ interface GrowerUser {
   email: string;
   auth_provider: string;
   module_role: string;
-  farm_ids: string[] | null;
+  grower_ids: string[] | null;
   allowed_menu_items: string[];
   financial_access: Record<string, boolean>;
   capabilities: string[];
@@ -39,7 +39,7 @@ interface GrowerUser {
   created_at: string;
 }
 
-interface Farm {
+interface GrowerInfo {
   id: string;
   name: string;
   region: string | null;
@@ -61,10 +61,10 @@ export default function GrowerUsersPage() {
       fetch("/api/grower-portal/admin/users").then((r) => r.json()),
   });
 
-  const { data: farms } = useQuery<Farm[]>({
-    queryKey: ["grower-admin-farms"],
+  const { data: growers } = useQuery<GrowerInfo[]>({
+    queryKey: ["grower-admin-growers"],
     queryFn: () =>
-      fetch("/api/grower-portal/admin/farms").then((r) => r.json()),
+      fetch("/api/grower-portal/admin/growers").then((r) => r.json()),
   });
 
   return (
@@ -94,7 +94,7 @@ export default function GrowerUsersPage() {
                 <tr className="border-b border-sand text-xs text-stone">
                   <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Farms</th>
+                  <th className="px-4 py-3 font-medium">Grower Access</th>
                   <th className="px-4 py-3 font-medium">Menu Access</th>
                   <th className="px-4 py-3 font-medium">Financials</th>
                   <th className="px-4 py-3 font-medium">Status</th>
@@ -113,21 +113,21 @@ export default function GrowerUsersPage() {
                     <td className="px-4 py-3 text-bark">{user.email}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {user.farm_ids === null ? (
+                        {user.grower_ids === null ? (
                           <span className="rounded-full bg-canopy/10 px-2 py-0.5 text-xs text-canopy">
-                            All farms
+                            All growers
                           </span>
                         ) : (
-                          user.farm_ids.map((farmId) => {
-                            const farm = (farms ?? []).find(
-                              (f) => f.id === farmId
+                          user.grower_ids.map((growerId) => {
+                            const grower = (growers ?? []).find(
+                              (g) => g.id === growerId
                             );
                             return (
                               <span
-                                key={farmId}
+                                key={growerId}
                                 className="rounded-full bg-sand/60 px-2 py-0.5 text-xs text-bark"
                               >
-                                {farm?.name ?? farmId.slice(0, 8)}
+                                {grower?.name ?? growerId.slice(0, 8)}
                               </span>
                             );
                           })
@@ -194,7 +194,7 @@ export default function GrowerUsersPage() {
       <AddUserDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
-        farms={farms ?? []}
+        growers={growers ?? []}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["grower-admin-users"] });
           setAddDialogOpen(false);
@@ -207,7 +207,7 @@ export default function GrowerUsersPage() {
           open={!!editUser}
           onOpenChange={(open) => !open && setEditUser(null)}
           user={editUser}
-          farms={farms ?? []}
+          growers={growers ?? []}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["grower-admin-users"] });
             setEditUser(null);
@@ -221,19 +221,19 @@ export default function GrowerUsersPage() {
 function AddUserDialog({
   open,
   onOpenChange,
-  farms,
+  growers,
   onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  farms: Farm[];
+  growers: GrowerInfo[];
   onSuccess: () => void;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [allFarms, setAllFarms] = useState(true);
-  const [selectedFarmIds, setSelectedFarmIds] = useState<string[]>([]);
+  const [allGrowers, setAllGrowers] = useState(true);
+  const [selectedGrowerIds, setSelectedGrowerIds] = useState<string[]>([]);
   const [menuItems, setMenuItems] = useState<string[]>(
     MENU_ITEMS.map((m) => m.id)
   );
@@ -252,7 +252,7 @@ function AddUserDialog({
           name,
           email,
           password,
-          farm_ids: allFarms ? null : selectedFarmIds,
+          grower_ids: allGrowers ? null : selectedGrowerIds,
           allowed_menu_items: menuItems,
           financial_access: financialAccess,
         }),
@@ -267,17 +267,17 @@ function AddUserDialog({
       setName("");
       setEmail("");
       setPassword("");
-      setAllFarms(true);
-      setSelectedFarmIds([]);
+      setAllGrowers(true);
+      setSelectedGrowerIds([]);
       onSuccess();
     },
   });
 
-  function toggleFarm(farmId: string) {
-    setSelectedFarmIds((prev) =>
-      prev.includes(farmId)
-        ? prev.filter((id) => id !== farmId)
-        : [...prev, farmId]
+  function toggleGrower(growerId: string) {
+    setSelectedGrowerIds((prev) =>
+      prev.includes(growerId)
+        ? prev.filter((id) => id !== growerId)
+        : [...prev, growerId]
     );
   }
 
@@ -336,37 +336,37 @@ function AddUserDialog({
             />
           </div>
 
-          {/* Farm assignment */}
+          {/* Grower access */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-bark">
-              Farm Access
+              Grower Access
             </label>
             <label className="mb-2 flex items-center gap-2 text-sm text-bark">
               <input
                 type="checkbox"
-                checked={allFarms}
-                onChange={() => setAllFarms(!allFarms)}
+                checked={allGrowers}
+                onChange={() => setAllGrowers(!allGrowers)}
                 className="h-4 w-4 rounded border-sand text-forest"
               />
-              All farms
+              All growers
             </label>
-            {!allFarms && (
+            {!allGrowers && (
               <div className="ml-6 space-y-1.5">
-                {farms.map((farm) => (
+                {growers.map((grower) => (
                   <label
-                    key={farm.id}
+                    key={grower.id}
                     className="flex items-center gap-2 text-sm text-bark"
                   >
                     <input
                       type="checkbox"
-                      checked={selectedFarmIds.includes(farm.id)}
-                      onChange={() => toggleFarm(farm.id)}
+                      checked={selectedGrowerIds.includes(grower.id)}
+                      onChange={() => toggleGrower(grower.id)}
                       className="h-3.5 w-3.5 rounded border-sand text-forest"
                     />
-                    {farm.name}
-                    {farm.region && (
+                    {grower.name}
+                    {grower.region && (
                       <span className="text-xs text-stone">
-                        — {farm.region}
+                        — {grower.region}
                       </span>
                     )}
                   </label>
@@ -443,18 +443,18 @@ function EditUserDialog({
   open,
   onOpenChange,
   user,
-  farms,
+  growers,
   onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: GrowerUser;
-  farms: Farm[];
+  growers: GrowerInfo[];
   onSuccess: () => void;
 }) {
-  const [allFarms, setAllFarms] = useState(user.farm_ids === null);
-  const [selectedFarmIds, setSelectedFarmIds] = useState<string[]>(
-    user.farm_ids ?? []
+  const [allGrowers, setAllGrowers] = useState(user.grower_ids === null);
+  const [selectedGrowerIds, setSelectedGrowerIds] = useState<string[]>(
+    user.grower_ids ?? []
   );
   const [menuItems, setMenuItems] = useState<string[]>(
     user.allowed_menu_items
@@ -470,7 +470,7 @@ function EditUserDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.user_id,
-          farm_ids: allFarms ? null : selectedFarmIds,
+          grower_ids: allGrowers ? null : selectedGrowerIds,
           allowed_menu_items: menuItems,
           financial_access: financialAccess,
         }),
@@ -499,11 +499,11 @@ function EditUserDialog({
     onSuccess,
   });
 
-  function toggleFarm(farmId: string) {
-    setSelectedFarmIds((prev) =>
-      prev.includes(farmId)
-        ? prev.filter((id) => id !== farmId)
-        : [...prev, farmId]
+  function toggleGrower(growerId: string) {
+    setSelectedGrowerIds((prev) =>
+      prev.includes(growerId)
+        ? prev.filter((id) => id !== growerId)
+        : [...prev, growerId]
     );
   }
 
@@ -526,37 +526,37 @@ function EditUserDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Farm assignment */}
+          {/* Grower access */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-bark">
-              Farm Access
+              Grower Access
             </label>
             <label className="mb-2 flex items-center gap-2 text-sm text-bark">
               <input
                 type="checkbox"
-                checked={allFarms}
-                onChange={() => setAllFarms(!allFarms)}
+                checked={allGrowers}
+                onChange={() => setAllGrowers(!allGrowers)}
                 className="h-4 w-4 rounded border-sand text-forest"
               />
-              All farms
+              All growers
             </label>
-            {!allFarms && (
+            {!allGrowers && (
               <div className="ml-6 space-y-1.5">
-                {farms.map((farm) => (
+                {growers.map((grower) => (
                   <label
-                    key={farm.id}
+                    key={grower.id}
                     className="flex items-center gap-2 text-sm text-bark"
                   >
                     <input
                       type="checkbox"
-                      checked={selectedFarmIds.includes(farm.id)}
-                      onChange={() => toggleFarm(farm.id)}
+                      checked={selectedGrowerIds.includes(grower.id)}
+                      onChange={() => toggleGrower(grower.id)}
                       className="h-3.5 w-3.5 rounded border-sand text-forest"
                     />
-                    {farm.name}
-                    {farm.region && (
+                    {grower.name}
+                    {grower.region && (
                       <span className="text-xs text-stone">
-                        — {farm.region}
+                        — {grower.region}
                       </span>
                     )}
                   </label>

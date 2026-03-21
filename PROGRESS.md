@@ -153,79 +153,85 @@
 - [x] `.env.local.example` — all env vars documented with comments, including subdomain routing vars
 - [x] Storage bucket comment in document upload route
 
-## Phase 7: Farm-Level Access & Grower Admin (COMPLETE)
+## Phase 7: Grower Groups & Access Control Restructure (COMPLETE)
 
-### Database (migration 00004)
-- [x] `farms` table — linked to growers, synced from FreshTrack (name, code, freshtrack_farm_id, region, location)
-- [x] RLS policies: hub admin reads all, portal staff reads all, grower_admin reads own grower farms, grower user reads assigned farms only
-- [x] `farm_id` column added to ft_consignments, ft_orders, ft_pallets, ft_dispatch, ft_charges, ft_stock (with indexes)
-- [x] `get_portal_farm_ids()` RLS helper function — returns accessible farm UUIDs (null = all farms)
-- [x] Grower admin RLS: `grower_admin_read_grower_users` policy on module_access for same-grower user visibility
-- [x] Farm sync config row (step 9) seeded for FreshTrack farm sync
+### Data Model Change
+- OLD: `growers` (businesses) → `farms` (sub-units, synced from FreshTrack) — WRONG assumption
+- NEW: `grower_groups` (parent businesses, Mackays-side only) → `growers` (individual farms/FreshTrack entities)
+- Each row in `growers` IS a farm (one FreshTrack entity = one farm)
+- `grower_groups` is a Mackays admin concept — hub admin creates groups and assigns growers to them
+- `farms` table, `farm_id` columns, `get_portal_farm_ids()` — all REMOVED
+
+### Database (migration 00004 — rewritten)
+- [x] `grower_groups` table — parent business grouping (name, code, abn, contact info, address)
+- [x] `grower_group_id` column added to `growers` table (FK to grower_groups)
+- [x] RLS policies: hub admin manages all, portal staff reads all, grower reads own group, service role full access
+- [x] `get_portal_grower_group_id()` helper — returns user's grower_group_id from module_access config
+- [x] `get_portal_grower_ids()` helper — returns accessible grower UUIDs (null = all in group)
+- [x] Grower group member RLS: users see growers in their group (grower_admin sees all, grower user filtered by grower_ids config)
+- [x] Grower admin RLS for module_access — can read users in same grower_group
 
 ### Access Control Model
-- [x] New `grower_admin` role — between staff and grower, manages users within their grower entity
-- [x] `GrowerPortalConfig` extended: `farm_ids` (null = all, array = specific), `financial_access` (per menu item boolean)
-- [x] `GrowerPortalContext` extended: `farmIds`, `financialAccess` fields
-- [x] `lib/portal-access.ts` — `getPortalAccessContext()` + `getFarmFilter()` shared helpers for API routes
-- [x] `lib/financial-filter.ts` — `stripFinancials()` recursively nulls monetary fields, `getPageNameFromPath()` maps routes to menu items
+- [x] `GrowerPortalConfig`: `grower_group_id` (which group), `grower_ids` (null = all, array = specific), `financial_access`, `capabilities`
+- [x] `GrowerPortalContext`: `growerGroupId`, `growerIds`, `financialAccess`, `moduleRole`, `capabilities`, `menuItems`
+- [x] `lib/portal-access.ts` — `getPortalAccessContext()` + `getGrowerFilter()` shared helpers for API routes
+- [x] `lib/financial-filter.ts` — `stripFinancials()` recursively nulls monetary fields
 
-### Farm Context & Selector
-- [x] `hooks/use-farm-context.ts` — fetches accessible farms, manages selectedFarmId state, handles single-farm lock
-- [x] `components/farm-selector.tsx` — dropdown with "All farms" + individual farm names with region
-- [x] `components/portal-shell.tsx` — provides `PortalDataContext` (selectedFarmId, financialAccess) via React context, `usePortalData()` hook
+### Grower Context & Switcher
+- [x] `hooks/use-grower-context.ts` — fetches accessible growers (filtered by grower_group_id + grower_ids), manages selectedGrowerId state
+- [x] `components/grower-switcher.tsx` — dropdown with "All growers" + individual grower names with region/code
+- [x] `components/portal-shell.tsx` — provides `PortalDataContext` (selectedGrowerId, financialAccess) via React context
 
-### API Farm Filtering & Financial Access
-- [x] `/api/dashboard/stats` — farm_id filter, financial access stripping
-- [x] `/api/dashboard/volume` — farm_id filter
-- [x] `/api/dashboard/customer-mix` — farm_id filter
-- [x] `/api/sales/weekly-breakdown` — farm_id filter, financial access stripping
-- [x] `/api/sales/price-landscape` — farm_id filter, financial access stripping
-- [x] `/api/remittances` — financial access stripping (remittances are grower-level, not farm-level)
+### API Grower Filtering & Financial Access
+- [x] `/api/dashboard/stats`, `/volume`, `/customer-mix` — grower_id filter via getGrowerFilter()
+- [x] `/api/sales/weekly-breakdown`, `/price-landscape` — grower_id filter, financial access stripping
+- [x] `/api/remittances` — financial access stripping (grower-level)
 
 ### Grower Admin User Management
-- [x] `app/api/grower-portal/admin/users/route.ts` — GET (list grower's users), POST (create user with Auth + module_access), PATCH (update farm/menu/financial config), DELETE (deactivate)
-- [x] `app/api/grower-portal/admin/farms/route.ts` — GET (list grower's farms), POST (hub admin create farm manually)
-- [x] `app/(grower-portal)/settings/users/page.tsx` — full user management page with add/edit dialogs, farm checkboxes, menu items, per-page financial toggles, deactivate
-- [x] Settings page — grower admin links section with "User Management" card
-
-### FreshTrack Sync Updates
-- [x] Farm ID resolution during sync (freshtrack_farm_id → farms.id)
-- [x] Farm lookup map loaded alongside grower map in sync-freshtrack route
+- [x] `app/api/grower-portal/admin/users/route.ts` — scoped by grower_group_id (was grower_id), grower_ids validation
+- [x] `app/api/grower-portal/admin/growers/route.ts` — lists growers in admin's grower_group (replaced farms route)
+- [x] `app/(grower-portal)/settings/users/page.tsx` — grower checkboxes (was farm checkboxes), menu items, financial toggles
 
 ### Hub Admin Updates
-- [x] Module assignment POST defaults: `farm_ids: null`, `financial_access` auto-populated per role
-- [x] User edit page: grower dropdown shown for both `grower` and `grower_admin` roles, info text for grower_admin
+- [x] `app/api/hub-admin/grower-groups/route.ts` — NEW: GET list all, POST create grower_group
+- [x] `app/api/hub-admin/growers/route.ts` — updated: returns grower_group_id
+- [x] Module assignment POST defaults: `grower_ids: null`, `financial_access` auto-populated per role
+- [x] User edit page: "Grower Group" dropdown (was "Grower"), grower checkboxes for grower role, info text for grower_admin
 
 ### Seed Data
-- [x] 5 sample farms across 2 growers (Tully River Block A/B, Lakeland Station, Mission Beach Farm, El Arish Property)
+- [x] 2 sample grower_groups (North Queensland Banana Co, Tropical Fruit Partners)
+- [x] 5 sample growers assigned to groups (was farms)
 
 ### Architecture Decisions
-- **Farm-level access:** Farms belong to growers. A user's `farm_ids` in module_access config controls which farms they see. null = all farms (admin/staff/grower_admin default). Array = specific farms only. Single-farm users get a flat experience (no farm switcher).
-- **Financial access:** Per-menu-item boolean in `financial_access` config. When false, API routes strip monetary fields from responses (replaced with null, not 0). UI shows "—" or "Restricted" for null financial values.
-- **Grower admin role:** New role `grower_admin` sits between staff and grower. Can manage users within their own grower entity from the grower subdomain (/settings/users). Cannot see other growers, access hub admin, or change their own role.
-- **Farm selector:** Appears in the portal shell top bar (both mobile and desktop). Only shown when user has 2+ farms. "All farms" = consolidated view. Portal data context provides `selectedFarmId` and `financialAccess` to child pages.
-- **Subdomain routing:** One Next.js app, one Vercel deployment serving two subdomains. Portal mode detected in middleware via `request.headers.get("host")`. `lib/subdomain.ts` provides `getPortalMode()` used by middleware (server-side), login page (client-side via `window.location.hostname`), and server components (via `headers().get("host")`). Grower subdomain restricts to email/password auth and grower-portal module only. Hub subdomain restricts to Microsoft SSO and allows all modules. Localhost shows everything for development. Env vars `NEXT_PUBLIC_GROWER_DOMAIN` and `NEXT_PUBLIC_HUB_DOMAIN` allow custom domain overrides without code changes.
+- **Grower groups:** Hub admin creates grower_groups (parent businesses) and assigns growers (FreshTrack entities) to them. grower_groups table is Mackays-side only — not synced from FreshTrack. Each grower (farm) can belong to one grower_group.
+- **Grower-level access:** A user's `grower_ids` in module_access config controls which growers they see within their group. null = all growers in group (admin/staff/grower_admin default). Array = specific growers only.
+- **Financial access:** Per-menu-item boolean in `financial_access` config. When false, API routes strip monetary fields from responses (replaced with null, not 0).
+- **Grower admin role:** `grower_admin` manages users within their grower group from /settings/users. Has `manage_grower_users` and `view_all_growers` capabilities.
+- **Grower switcher:** Appears in portal shell top bar when user has 2+ accessible growers. "All growers" = consolidated view.
 
 ### File Structure
 ```
-supabase/migrations/00004_farms_and_grower_admin.sql — Farms table, farm_id columns, RLS, get_portal_farm_ids()
-lib/portal-access.ts                                  — Shared API access context (growerId, farmIds, financialAccess)
+supabase/migrations/00004_farms_and_grower_admin.sql — grower_groups table, grower_group_id column, RLS, helper functions
+lib/portal-access.ts                                  — Shared API access context (growerGroupId, growerIds, financialAccess)
 lib/financial-filter.ts                               — stripFinancials() + getPageNameFromPath()
-hooks/use-farm-context.ts                             — Client farm context hook (farms, selectedFarmId, switcher logic)
-components/farm-selector.tsx                          — Farm dropdown selector component
-components/portal-shell.tsx                           — Updated with PortalDataContext (farm + financial)
-app/api/grower-portal/admin/users/route.ts            — Grower admin user CRUD API
-app/api/grower-portal/admin/farms/route.ts            — Farm list/create API
-app/(grower-portal)/settings/users/page.tsx           — Grower admin user management page
+hooks/use-grower-context.ts                            — Client grower context hook (growers, selectedGrowerId, switcher logic)
+components/grower-switcher.tsx                         — Grower dropdown selector for portal users
+components/grower-selector.tsx                         — Admin grower selector (for staff/admin picking any grower)
+components/portal-shell.tsx                            — PortalDataContext (selectedGrowerId + financialAccess)
+app/api/grower-portal/admin/users/route.ts             — Grower admin user CRUD (scoped by grower_group_id)
+app/api/grower-portal/admin/growers/route.ts           — Grower list for admin (scoped by grower_group_id)
+app/api/hub-admin/grower-groups/route.ts               — Hub admin grower_groups CRUD
+app/(grower-portal)/settings/users/page.tsx            — Grower admin user management page
+app/(hub-admin)/hub-admin/users/[id]/page.tsx          — Hub admin user edit with grower group selector
 ```
 
 ### Remaining
 - [ ] Hub admin modules page
 - [ ] Forecasting page
 - [ ] Orders page / Dispatch tracking / Stock on hand
-- [ ] Dashboard page: pass selectedFarmId to API calls from usePortalData() context
+- [ ] Wire up selectedGrowerId from usePortalData() to API calls in dashboard/sales pages
 - [ ] Remittances detail: financial access filtering on detail API
+- [ ] Hub admin: dedicated grower_groups management page (currently managed via user edit)
 
 ---
 
@@ -253,5 +259,5 @@ app/(grower-portal)/settings/users/page.tsx           — Grower admin user mana
 - Test end-to-end sync with real data (trigger manual sync from Sync Status page)
 - Mobile QA pass — test all pages on iPhone/Android at 375px and 768px breakpoints
 - Set up monitoring/alerting for sync failures (Vercel → Monitoring or external: Datadog, PagerDuty)
-- Wire up `usePortalData().selectedFarmId` in dashboard/sales pages for farm-level filtering in client
+- Wire up `usePortalData().selectedGrowerId` in dashboard/sales pages for grower-level filtering in client
 - Test grower_admin user creation flow end-to-end

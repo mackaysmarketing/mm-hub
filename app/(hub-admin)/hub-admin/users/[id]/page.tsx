@@ -50,10 +50,17 @@ interface UserDetail {
   modules: ModuleAccessRow[];
 }
 
+interface GrowerGroup {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
 interface Grower {
   id: string;
   name: string;
   code: string;
+  grower_group_id: string | null;
 }
 
 export default function EditUserPage() {
@@ -73,6 +80,11 @@ export default function EditUserPage() {
     queryKey: ["hub-admin-user", params.id],
     queryFn: () =>
       fetch(`/api/hub-admin/users/${params.id}`).then((r) => r.json()),
+  });
+
+  const { data: growerGroups } = useQuery<GrowerGroup[]>({
+    queryKey: ["hub-admin-grower-groups"],
+    queryFn: () => fetch("/api/hub-admin/grower-groups").then((r) => r.json()),
   });
 
   const { data: growers } = useQuery<Grower[]>({
@@ -368,6 +380,7 @@ export default function EditUserPage() {
               <ModuleCard
                 key={mod.id}
                 mod={mod}
+                growerGroups={growerGroups ?? []}
                 growers={growers ?? []}
                 onUpdateRole={(role) =>
                   updateModuleMutation.mutate({
@@ -489,15 +502,17 @@ export default function EditUserPage() {
   );
 }
 
-/** Module assignment card with role, menu items, capabilities, and grower selector */
+/** Module assignment card with role, menu items, capabilities, and grower group selector */
 function ModuleCard({
   mod,
+  growerGroups,
   growers,
   onUpdateRole,
   onUpdateConfig,
   onRemove,
 }: {
   mod: ModuleAccessRow;
+  growerGroups: GrowerGroup[];
   growers: Grower[];
   onUpdateRole: (role: string) => void;
   onUpdateConfig: (config: Record<string, unknown>) => void;
@@ -512,7 +527,13 @@ function ModuleCard({
   const allowedMenuItems =
     (mod.config.allowed_menu_items as string[]) ?? [];
   const capabilities = (mod.config.capabilities as string[]) ?? [];
-  const growerId = (mod.config.grower_id as string) ?? "";
+  const growerGroupId = (mod.config.grower_group_id as string) ?? "";
+  const growerIds = (mod.config.grower_ids as string[] | null) ?? null;
+
+  // Growers for the selected grower_group
+  const groupGrowers = growerGroupId
+    ? growers.filter((g) => g.grower_group_id === growerGroupId)
+    : [];
 
   // All possible capabilities from all roles (for display)
   const allCapabilities = new Set<string>();
@@ -544,13 +565,24 @@ function ModuleCard({
 
   function handleRoleChange(newRole: string) {
     onUpdateRole(newRole);
-    // The API returns defaults; the parent will refetch
   }
 
-  function handleGrowerChange(newGrowerId: string) {
+  function handleGrowerGroupChange(newGroupId: string) {
     onUpdateConfig({
       ...mod.config,
-      grower_id: newGrowerId || null,
+      grower_group_id: newGroupId || null,
+      grower_ids: null, // Reset grower_ids when group changes
+    });
+  }
+
+  function toggleGrowerAccess(growerId: string) {
+    const currentIds = growerIds ?? [];
+    const updated = currentIds.includes(growerId)
+      ? currentIds.filter((id) => id !== growerId)
+      : [...currentIds, growerId];
+    onUpdateConfig({
+      ...mod.config,
+      grower_ids: updated.length === 0 ? null : updated,
     });
   }
 
@@ -595,29 +627,71 @@ function ModuleCard({
         </div>
       )}
 
-      {/* Grower selector (for grower-portal with grower/grower_admin role) */}
+      {/* Grower Group selector (for grower-portal with grower/grower_admin role) */}
       {mod.module_id === "grower-portal" &&
         (mod.module_role === "grower" || mod.module_role === "grower_admin") && (
         <div className="mt-3">
           <label className="mb-1.5 block text-xs font-medium text-bark">
-            Grower
+            Grower Group
           </label>
           <select
-            value={growerId}
-            onChange={(e) => handleGrowerChange(e.target.value)}
+            value={growerGroupId}
+            onChange={(e) => handleGrowerGroupChange(e.target.value)}
             className="w-full max-w-xs rounded-md border border-sand bg-white px-3 py-1.5 text-sm text-soil focus:outline-none focus:ring-1 focus:ring-forest"
           >
-            <option value="">Select a grower...</option>
-            {growers.map((g) => (
+            <option value="">Select a grower group...</option>
+            {growerGroups.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.name} ({g.code})
+                {g.name} {g.code ? `(${g.code})` : ""}
               </option>
             ))}
           </select>
           {mod.module_role === "grower_admin" && (
             <p className="mt-1.5 text-xs text-stone">
-              This user will be able to manage grower portal users for this grower.
+              This user will be able to manage grower portal users for this grower group.
+              They will have access to all growers in the group by default.
             </p>
+          )}
+
+          {/* Grower checkboxes for grower role (not grower_admin) */}
+          {mod.module_role === "grower" && growerGroupId && groupGrowers.length > 0 && (
+            <div className="mt-3">
+              <label className="mb-1.5 block text-xs font-medium text-bark">
+                Grower Access
+              </label>
+              <label className="mb-2 flex items-center gap-2 text-xs text-bark">
+                <input
+                  type="checkbox"
+                  checked={growerIds === null}
+                  onChange={() => {
+                    onUpdateConfig({
+                      ...mod.config,
+                      grower_ids: growerIds === null ? [] : null,
+                    });
+                  }}
+                  className="h-3.5 w-3.5 rounded border-sand text-forest"
+                />
+                All growers in group
+              </label>
+              {growerIds !== null && (
+                <div className="ml-4 space-y-1">
+                  {groupGrowers.map((g) => (
+                    <label
+                      key={g.id}
+                      className="flex items-center gap-2 text-xs text-bark"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={growerIds.includes(g.id)}
+                        onChange={() => toggleGrowerAccess(g.id)}
+                        className="h-3.5 w-3.5 rounded border-sand text-forest"
+                      />
+                      {g.name} {g.code ? `(${g.code})` : ""}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

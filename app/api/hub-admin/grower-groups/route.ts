@@ -1,35 +1,26 @@
 import { NextResponse } from "next/server";
 import { getUserSession } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET — List farms for the current user's grower (or all farms for admin/staff).
- *       Used by farm selector and grower admin user management form.
- *
- * POST — Create a farm manually (hub admin only).
- *        For cases where farms aren't yet synced from FreshTrack.
+ * GET — List all grower_groups
+ * POST — Create a new grower_group
  */
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const growerId = searchParams.get("growerId");
-
-  const supabase = createClient();
-
-  let query = supabase
-    .from("farms")
-    .select("*")
-    .eq("active", true)
-    .order("name");
-
-  if (growerId) {
-    query = query.eq("grower_id", growerId);
+export async function GET() {
+  const session = await getUserSession();
+  if (!session || session.hubUser.hub_role !== "hub_admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { data, error } = await query;
+  const admin = createAdminClient();
+
+  const { data, error } = await admin
+    .from("grower_groups")
+    .select("id, name, code, abn, contact_name, contact_email, contact_phone, address, active")
+    .order("name");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -45,17 +36,19 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { grower_id, name, code, region, location } = body as {
-    grower_id: string;
+  const { name, code, abn, contact_name, contact_email, contact_phone, address } = body as {
     name: string;
     code?: string;
-    region?: string;
-    location?: string;
+    abn?: string;
+    contact_name?: string;
+    contact_email?: string;
+    contact_phone?: string;
+    address?: string;
   };
 
-  if (!grower_id || !name) {
+  if (!name) {
     return NextResponse.json(
-      { error: "grower_id and name are required" },
+      { error: "Missing required field: name" },
       { status: 400 }
     );
   }
@@ -63,13 +56,15 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
 
   const { data, error } = await admin
-    .from("farms")
+    .from("grower_groups")
     .insert({
-      grower_id,
       name,
       code: code || null,
-      region: region || null,
-      location: location || null,
+      abn: abn || null,
+      contact_name: contact_name || null,
+      contact_email: contact_email || null,
+      contact_phone: contact_phone || null,
+      address: address || null,
     })
     .select()
     .single();

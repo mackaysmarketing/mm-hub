@@ -55,31 +55,43 @@ export interface UserSession {
 }
 
 export interface GrowerPortalConfig {
-  grower_id: string | null;
-  farm_ids: string[] | null;              // null = all farms, array = specific farms only
+  grower_group_id: string | null;        // which grower_group this user belongs to
+  grower_ids: string[] | null;           // null = all growers in group, array = specific growers only
   allowed_menu_items: string[];
   financial_access: Record<string, boolean>;  // per menu item: true = see financials, false = hide
   capabilities: string[];
 }
 
 export interface GrowerPortalContext {
-  moduleRole: "admin" | "staff" | "grower_admin" | "grower";
-  growerId: string | null;
-  farmIds: string[] | null;
-  allowedMenuItems: string[];
+  growerGroupId: string | null;
+  growerIds: string[] | null;
   financialAccess: Record<string, boolean>;
+  moduleRole: string;
   capabilities: string[];
+  menuItems: string[];
 }
 
-export interface Farm {
+export interface Grower {
   id: string;
-  grower_id: string;
   name: string;
   code: string | null;
-  freshtrack_farm_id: number | null;
-  freshtrack_entity_code: string | null;
-  location: string | null;
+  freshtrack_code: string | null;
+  grower_group_id: string | null;
   region: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GrowerGroup {
+  id: string;
+  name: string;
+  code: string | null;
+  abn: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  address: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;

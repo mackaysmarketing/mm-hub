@@ -3,8 +3,8 @@
 import { useState, createContext, useContext, type ReactNode } from "react";
 import { AppSidebar, SidebarTrigger } from "@/components/app-sidebar";
 import { DataFreshnessBadge } from "@/components/data-freshness-badge";
-import { FarmSelector } from "@/components/farm-selector";
-import { useFarmContext } from "@/hooks/use-farm-context";
+import { GrowerSwitcher } from "@/components/grower-switcher";
+import { useGrowerContext } from "@/hooks/use-grower-context";
 import type { ModuleConfig, MenuItem, HubUser, GrowerPortalContext } from "@/types/modules";
 
 interface PortalShellProps {
@@ -15,22 +15,22 @@ interface PortalShellProps {
   moduleRole: string;
   capabilities: string[];
   hasMultipleModules: boolean;
-  growerId?: string | null;
-  farmIds?: string[] | null;
+  growerGroupId?: string | null;
+  growerIds?: string[] | null;
   financialAccess?: Record<string, boolean>;
   children: ReactNode;
 }
 
-// Context to expose farm selection and financial access to child pages
+// Context to expose grower selection and financial access to child pages
 interface PortalDataContext {
-  selectedFarmId: string | null;
-  setSelectedFarmId: (id: string | null) => void;
+  selectedGrowerId: string | null;
+  setSelectedGrowerId: (id: string | null) => void;
   financialAccess: Record<string, boolean>;
 }
 
 const PortalDataCtx = createContext<PortalDataContext>({
-  selectedFarmId: null,
-  setSelectedFarmId: () => {},
+  selectedGrowerId: null,
+  setSelectedGrowerId: () => {},
   financialAccess: {},
 });
 
@@ -46,29 +46,29 @@ export function PortalShell({
   moduleRole,
   capabilities,
   hasMultipleModules,
-  growerId,
-  farmIds,
+  growerGroupId,
+  growerIds,
   financialAccess = {},
   children,
 }: PortalShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Farm context
+  // Grower context
   const portalContext: GrowerPortalContext = {
-    moduleRole: moduleRole as GrowerPortalContext["moduleRole"],
-    growerId: growerId ?? null,
-    farmIds: farmIds ?? null,
-    allowedMenuItems: allowedMenuItems.map((m) => m.id),
+    moduleRole,
+    growerGroupId: growerGroupId ?? null,
+    growerIds: growerIds ?? null,
+    menuItems: allowedMenuItems.map((m) => m.id),
     financialAccess,
     capabilities,
   };
-  const farmCtx = useFarmContext(portalContext);
+  const growerCtx = useGrowerContext(portalContext);
 
   return (
     <PortalDataCtx.Provider
       value={{
-        selectedFarmId: farmCtx.selectedFarmId,
-        setSelectedFarmId: farmCtx.setSelectedFarmId,
+        selectedGrowerId: growerCtx.selectedGrowerId,
+        setSelectedGrowerId: growerCtx.setSelectedGrowerId,
         financialAccess,
       }}
     >
@@ -85,27 +85,27 @@ export function PortalShell({
           onClose={() => setSidebarOpen(false)}
         />
         <div className="flex flex-1 flex-col bg-parchment">
-          {/* Mobile top bar with hamburger + farm selector + freshness badge */}
+          {/* Mobile top bar with hamburger + grower switcher + freshness badge */}
           <div className="flex h-12 items-center justify-between border-b border-sand bg-warmwhite px-4 lg:hidden">
             <SidebarTrigger onClick={() => setSidebarOpen(true)} />
             <div className="flex items-center gap-2">
-              {farmCtx.showFarmSwitcher && (
-                <FarmSelector
-                  farms={farmCtx.farms}
-                  selectedFarmId={farmCtx.selectedFarmId}
-                  onChange={farmCtx.setSelectedFarmId}
+              {growerCtx.showGrowerSwitcher && (
+                <GrowerSwitcher
+                  growers={growerCtx.growers}
+                  selectedGrowerId={growerCtx.selectedGrowerId}
+                  onChange={growerCtx.setSelectedGrowerId}
                 />
               )}
               <DataFreshnessBadge />
             </div>
           </div>
-          {/* Desktop top strip — farm selector + freshness badge */}
+          {/* Desktop top strip — grower switcher + freshness badge */}
           <div className="hidden lg:flex h-8 items-center justify-end gap-3 px-6 pt-2">
-            {farmCtx.showFarmSwitcher && (
-              <FarmSelector
-                farms={farmCtx.farms}
-                selectedFarmId={farmCtx.selectedFarmId}
-                onChange={farmCtx.setSelectedFarmId}
+            {growerCtx.showGrowerSwitcher && (
+              <GrowerSwitcher
+                growers={growerCtx.growers}
+                selectedGrowerId={growerCtx.selectedGrowerId}
+                onChange={growerCtx.setSelectedGrowerId}
               />
             )}
             <DataFreshnessBadge />

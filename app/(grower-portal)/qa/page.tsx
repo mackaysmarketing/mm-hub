@@ -12,7 +12,7 @@ import {
 
 import { TopBar } from "@/components/top-bar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUser } from "@/hooks/use-user";
+
 
 interface CategoryScore {
   id: string;
@@ -175,21 +175,8 @@ function HealthGauge({ score, status }: { score: number; status: string | null }
 }
 
 export default function QAPage() {
-  const { session } = useUser();
-
-  const portalAccess = session?.moduleAccess.find(
-    (m) => m.module_id === "grower-portal"
-  );
-  const growerId =
-    (portalAccess?.config as { grower_id?: string })?.grower_id ?? undefined;
-
-  function buildParams(): string {
-    const params = new URLSearchParams();
-    if (growerId) params.set("growerId", growerId);
-    return params.toString();
-  }
-
-  const queryParams = buildParams();
+  // Grower scoping is handled server-side
+  const queryParams = "";
 
   const { data, isLoading } = useQuery<QAOverviewResponse>({
     queryKey: ["qa-overview", queryParams],

@@ -25,7 +25,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { useUser } from "@/hooks/use-user";
+
 
 const CATEGORIES = [
   { id: "all", label: "All" },
@@ -67,7 +67,6 @@ function getCategoryLabel(category: string): string {
 }
 
 export default function DocumentsPage() {
-  const { session } = useUser();
   const queryClient = useQueryClient();
   const [category, setCategory] = useState("all");
   const [search, setSearch] = useState("");
@@ -79,15 +78,9 @@ export default function DocumentsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const portalAccess = session?.moduleAccess.find(
-    (m) => m.module_id === "grower-portal"
-  );
-  const growerId =
-    (portalAccess?.config as { grower_id?: string })?.grower_id ?? undefined;
-
+  // Grower scoping is handled server-side via getGrowerFilter()
   function buildParams(): string {
     const params = new URLSearchParams();
-    if (growerId) params.set("growerId", growerId);
     if (category !== "all") params.set("category", category);
     if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
     return params.toString();
@@ -106,7 +99,6 @@ export default function DocumentsPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("category", uploadCategory);
-      if (growerId) formData.append("growerId", growerId);
       const res = await fetch("/api/documents/upload", {
         method: "POST",
         body: formData,

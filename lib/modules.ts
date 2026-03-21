@@ -47,7 +47,7 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
         role: "grower_admin",
         label: "Grower Admin",
         description:
-          "Grower-side admin — manages users within their own grower entity, sees all farms",
+          "Grower-side admin — manages users within their grower group, sees all growers",
         defaultMenuItems: [
           "Dashboard",
           "Sales & Pricing",
@@ -55,12 +55,12 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
           "Remittances",
           "Documents",
         ],
-        capabilities: ["manage_grower_users", "view_all_farms"],
+        capabilities: ["manage_grower_users", "view_all_growers"],
       },
       {
         role: "grower",
         label: "Grower",
-        description: "View own data only — scoped by grower_id",
+        description: "View own data only — scoped by grower_group_id",
         defaultMenuItems: [
           "Dashboard",
           "Sales & Pricing",

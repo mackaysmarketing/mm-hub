@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getPortalAccessContext, getFarmFilter } from "@/lib/portal-access";
+import { getPortalAccessContext, getGrowerFilter } from "@/lib/portal-access";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +16,13 @@ export async function GET(request: Request) {
   const growerId = searchParams.get("growerId");
   const timeRange = searchParams.get("timeRange") ?? "12W";
   const produceType = searchParams.get("produceType");
-  const farmId = searchParams.get("farmId");
 
   const days = TIME_RANGE_DAYS[timeRange] ?? 84;
   const periodStart = new Date(Date.now() - days * 86400000);
 
-  // Get portal access context for farm filtering
+  // Get portal access context for grower filtering
   const accessCtx = await getPortalAccessContext();
-  const farmFilter = getFarmFilter(accessCtx, farmId);
+  const growerFilter = getGrowerFilter(accessCtx);
 
   const supabase = createClient();
 
@@ -36,7 +35,7 @@ export async function GET(request: Request) {
   if (growerId) query = query.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     query = query.eq("produce_category", produceType);
-  if (farmFilter) query = query.in("farm_id", farmFilter);
+  if (growerFilter) query = query.in("grower_id", growerFilter);
 
   const { data: rows } = await query;
 

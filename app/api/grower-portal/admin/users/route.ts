@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 
 /**
- * GET — List users for the grower admin's grower
+ * GET — List users for the grower admin's grower group
  * POST — Create a new grower user
  * PATCH — Update a grower user's access
  * DELETE — Deactivate a grower user
@@ -26,10 +26,10 @@ async function getGrowerAdminContext() {
   // Must have manage_grower_users capability
   if (!capabilities.includes("manage_grower_users")) return null;
 
-  const growerId = config.grower_id as string;
-  if (!growerId) return null;
+  const growerGroupId = config.grower_group_id as string;
+  if (!growerGroupId) return null;
 
-  return { session, growerId, portalAccess };
+  return { session, growerGroupId, portalAccess };
 }
 
 export async function GET() {
@@ -40,12 +40,12 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  // Get all module_access rows for grower-portal with this grower_id
+  // Get all module_access rows for grower-portal with this grower_group_id
   const { data: accessRows, error: accessError } = await admin
     .from("module_access")
     .select("user_id, module_role, config, active, created_at, updated_at")
     .eq("module_id", "grower-portal")
-    .filter("config->>grower_id", "eq", ctx.growerId);
+    .filter("config->>grower_group_id", "eq", ctx.growerGroupId);
 
   if (accessError) {
     return NextResponse.json({ error: accessError.message }, { status: 500 });
@@ -66,7 +66,7 @@ export async function GET() {
 
   const result = accessRows
     .filter((r) => {
-      // Don't show the grower_admin's own record or admin/staff roles
+      // Don't show admin/staff roles
       const role = r.module_role;
       return role === "grower" || role === "grower_admin";
     })
@@ -79,7 +79,7 @@ export async function GET() {
         email: user?.email ?? "",
         auth_provider: user?.auth_provider ?? "email",
         module_role: r.module_role,
-        farm_ids: (config.farm_ids as string[] | null) ?? null,
+        grower_ids: (config.grower_ids as string[] | null) ?? null,
         allowed_menu_items: (config.allowed_menu_items as string[]) ?? [],
         financial_access:
           (config.financial_access as Record<string, boolean>) ?? {},
@@ -104,14 +104,14 @@ export async function POST(request: Request) {
     name,
     email,
     password,
-    farm_ids,
+    grower_ids,
     allowed_menu_items,
     financial_access,
   } = body as {
     name: string;
     email: string;
     password: string;
-    farm_ids: string[] | null;
+    grower_ids: string[] | null;
     allowed_menu_items: string[];
     financial_access: Record<string, boolean>;
   };
@@ -125,17 +125,17 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
 
-  // Validate farm_ids belong to this grower
-  if (farm_ids && farm_ids.length > 0) {
-    const { data: farms } = await admin
-      .from("farms")
+  // Validate grower_ids belong to this grower_group
+  if (grower_ids && grower_ids.length > 0) {
+    const { data: growers } = await admin
+      .from("growers")
       .select("id")
-      .eq("grower_id", ctx.growerId)
-      .in("id", farm_ids);
+      .eq("grower_group_id", ctx.growerGroupId)
+      .in("id", grower_ids);
 
-    if (!farms || farms.length !== farm_ids.length) {
+    if (!growers || growers.length !== grower_ids.length) {
       return NextResponse.json(
-        { error: "Invalid farm IDs — farms must belong to your grower" },
+        { error: "Invalid grower IDs — growers must belong to your grower group" },
         { status: 400 }
       );
     }
@@ -163,8 +163,8 @@ export async function POST(request: Request) {
       module_id: "grower-portal",
       module_role: "grower",
       config: {
-        grower_id: ctx.growerId,
-        farm_ids: farm_ids,
+        grower_group_id: ctx.growerGroupId,
+        grower_ids: grower_ids,
         allowed_menu_items: allowed_menu_items,
         financial_access: financial_access,
         capabilities: [],
@@ -191,13 +191,13 @@ export async function PATCH(request: Request) {
   const body = await request.json();
   const {
     user_id,
-    farm_ids,
+    grower_ids,
     allowed_menu_items,
     financial_access,
     active,
   } = body as {
     user_id: string;
-    farm_ids?: string[] | null;
+    grower_ids?: string[] | null;
     allowed_menu_items?: string[];
     financial_access?: Record<string, boolean>;
     active?: boolean;
@@ -212,7 +212,7 @@ export async function PATCH(request: Request) {
 
   const admin = createAdminClient();
 
-  // Verify the target user belongs to the same grower
+  // Verify the target user belongs to the same grower_group
   const { data: existingAccess } = await admin
     .from("module_access")
     .select("config")
@@ -225,21 +225,21 @@ export async function PATCH(request: Request) {
   }
 
   const existingConfig = existingAccess.config as Record<string, unknown>;
-  if (existingConfig.grower_id !== ctx.growerId) {
+  if (existingConfig.grower_group_id !== ctx.growerGroupId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Validate farm_ids
-  if (farm_ids && farm_ids.length > 0) {
-    const { data: farms } = await admin
-      .from("farms")
+  // Validate grower_ids
+  if (grower_ids && grower_ids.length > 0) {
+    const { data: growers } = await admin
+      .from("growers")
       .select("id")
-      .eq("grower_id", ctx.growerId)
-      .in("id", farm_ids);
+      .eq("grower_group_id", ctx.growerGroupId)
+      .in("id", grower_ids);
 
-    if (!farms || farms.length !== farm_ids.length) {
+    if (!growers || growers.length !== grower_ids.length) {
       return NextResponse.json(
-        { error: "Invalid farm IDs" },
+        { error: "Invalid grower IDs" },
         { status: 400 }
       );
     }
@@ -247,7 +247,7 @@ export async function PATCH(request: Request) {
 
   // Build updated config
   const updatedConfig = { ...existingConfig };
-  if (farm_ids !== undefined) updatedConfig.farm_ids = farm_ids;
+  if (grower_ids !== undefined) updatedConfig.grower_ids = grower_ids;
   if (allowed_menu_items !== undefined)
     updatedConfig.allowed_menu_items = allowed_menu_items;
   if (financial_access !== undefined)
@@ -289,7 +289,7 @@ export async function DELETE(request: Request) {
 
   const admin = createAdminClient();
 
-  // Verify the target user belongs to the same grower
+  // Verify the target user belongs to the same grower_group
   const { data: existingAccess } = await admin
     .from("module_access")
     .select("config")
@@ -302,7 +302,7 @@ export async function DELETE(request: Request) {
   }
 
   const config = existingAccess.config as Record<string, unknown>;
-  if (config.grower_id !== ctx.growerId) {
+  if (config.grower_group_id !== ctx.growerGroupId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

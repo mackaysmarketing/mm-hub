@@ -19,7 +19,7 @@ import { TopBar } from "@/components/top-bar";
 import { TimeRangeSelector } from "@/components/time-range-selector";
 import { ProduceTypeSelector } from "@/components/produce-type-selector";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUser } from "@/hooks/use-user";
+
 
 const PRODUCE_TYPES = [
   { id: "Banana", label: "Banana", color: "#E8B824" },
@@ -97,20 +97,13 @@ interface PriceLandscapeResponse {
 }
 
 export default function SalesPage() {
-  const { session } = useUser();
   const [timeRange, setTimeRange] = useState("12W");
   const [produceType, setProduceType] = useState("all");
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
 
-  const portalAccess = session?.moduleAccess.find(
-    (m) => m.module_id === "grower-portal"
-  );
-  const growerId =
-    (portalAccess?.config as { grower_id?: string })?.grower_id ?? undefined;
-
+  // Grower scoping is handled server-side via getGrowerFilter()
   function buildParams(): string {
     const params = new URLSearchParams();
-    if (growerId) params.set("growerId", growerId);
     params.set("timeRange", timeRange);
     if (produceType !== "all") params.set("produceType", produceType);
     return params.toString();

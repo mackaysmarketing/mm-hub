@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const search = searchParams.get("search");
 
   // Get portal access context for financial access control
-  // Note: Remittances are grower-level (not farm-level), so no farm filtering
+  // Note: Remittances are grower-level, no grower-specific filtering needed here
   const accessCtx = await getPortalAccessContext();
 
   const supabase = createClient();

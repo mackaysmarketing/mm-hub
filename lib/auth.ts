@@ -96,10 +96,10 @@ export function resolveGrowerPortalContext(
 ): GrowerPortalContext {
   const config = access.config as Record<string, unknown>;
   return {
-    moduleRole: access.module_role as "admin" | "staff" | "grower_admin" | "grower",
-    growerId: (config.grower_id as string) || null,
-    farmIds: (config.farm_ids as string[] | null) ?? null,
-    allowedMenuItems: (config.allowed_menu_items as string[]) || [],
+    moduleRole: access.module_role,
+    growerGroupId: (config.grower_group_id as string) || null,
+    growerIds: (config.grower_ids as string[] | null) ?? null,
+    menuItems: (config.allowed_menu_items as string[]) || [],
     financialAccess: (config.financial_access as Record<string, boolean>) || {},
     capabilities: (config.capabilities as string[]) || [],
   };

@@ -2,11 +2,18 @@
 -- MM-Hub Seed Data
 -- =============================================================
 
--- Test growers
-INSERT INTO public.growers (id, name, code, freshtrack_code, abn, email, active) VALUES
-  ('a1000000-0000-0000-0000-000000000001', 'North Queensland Banana Co', 'NQBC', 'NQBC001', '12345678901', 'admin@nqbc.com.au', true),
-  ('a1000000-0000-0000-0000-000000000002', 'Tully River Farms', 'TRF', 'TRF001', '98765432109', 'info@tullyriverfarms.com.au', true),
-  ('a1000000-0000-0000-0000-000000000003', 'Lakeland Pastoral', 'LP', 'LP001', '11223344556', 'office@lakelandpastoral.com.au', true);
+-- Grower groups (parent businesses)
+INSERT INTO public.grower_groups (id, name, code, active) VALUES
+  ('g1000000-0000-0000-0000-000000000001', 'North Queensland Banana Co', 'NQBC', true),
+  ('g1000000-0000-0000-0000-000000000002', 'Tropical Fruit Partners', 'TFP', true);
+
+-- Test growers (each = one FreshTrack entity / farm)
+INSERT INTO public.growers (id, name, code, freshtrack_code, abn, email, active, grower_group_id) VALUES
+  ('a1000000-0000-0000-0000-000000000001', 'Tully River Block A', 'GRW-001', 'NQBC001', '12345678901', 'admin@nqbc.com.au', true, 'g1000000-0000-0000-0000-000000000001'),
+  ('a1000000-0000-0000-0000-000000000002', 'Tully River Block B', 'GRW-002', 'TRF001', '98765432109', 'info@tullyriverfarms.com.au', true, 'g1000000-0000-0000-0000-000000000001'),
+  ('a1000000-0000-0000-0000-000000000003', 'Lakeland Station', 'GRW-003', 'LP001', '11223344556', 'office@lakelandpastoral.com.au', true, 'g1000000-0000-0000-0000-000000000001'),
+  ('a1000000-0000-0000-0000-000000000004', 'Mission Beach Farm', 'GRW-004', 'MBF001', '22334455667', 'ops@missionbeachfarm.com.au', true, 'g1000000-0000-0000-0000-000000000002'),
+  ('a1000000-0000-0000-0000-000000000005', 'El Arish Property', 'GRW-005', 'EAP001', '33445566778', 'admin@elarish.com.au', true, 'g1000000-0000-0000-0000-000000000002');
 
 -- hub_users and module_access are created via auth trigger + admin UI.
 -- For local development, after creating auth users via Supabase dashboard:
@@ -16,21 +23,13 @@ INSERT INTO public.growers (id, name, code, freshtrack_code, abn, email, active)
 --
 -- 2. Grant yourself grower-portal module admin:
 --    INSERT INTO public.module_access (user_id, module_id, module_role, config)
---    SELECT id, 'grower-portal', 'admin', '{"grower_id":null,"allowed_menu_items":["Dashboard","Sales & Pricing","QA & Compliance","Forecasting","Remittances","Documents"],"capabilities":["manage_users","view_all_growers","enter_qa","trigger_sync"]}'::jsonb
+--    SELECT id, 'grower-portal', 'admin', '{"grower_group_id":null,"grower_ids":null,"allowed_menu_items":["Dashboard","Sales & Pricing","QA & Compliance","Forecasting","Remittances","Documents"],"capabilities":["manage_users","view_all_growers","enter_qa","trigger_sync"]}'::jsonb
 --    FROM public.hub_users WHERE email = 'your@email.com';
 --
 -- 3. Create a test grower user (after creating via Supabase Auth email/password):
 --    INSERT INTO public.module_access (user_id, module_id, module_role, config)
---    SELECT id, 'grower-portal', 'grower', '{"grower_id":"a1000000-0000-0000-0000-000000000001","allowed_menu_items":["Dashboard","Sales & Pricing","Remittances","Documents"],"capabilities":[]}'::jsonb
+--    SELECT id, 'grower-portal', 'grower', '{"grower_group_id":"g1000000-0000-0000-0000-000000000001","grower_ids":null,"allowed_menu_items":["Dashboard","Sales & Pricing","Remittances","Documents"],"capabilities":[]}'::jsonb
 --    FROM public.hub_users WHERE email = 'grower@test.com';
-
--- Sample farms
-INSERT INTO public.farms (id, grower_id, name, code, region, active) VALUES
-  ('f1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'Tully River Block A', 'TRB-A', 'Tully', true),
-  ('f1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'Tully River Block B', 'TRB-B', 'Tully', true),
-  ('f1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', 'Lakeland Station', 'LKS', 'Lakeland', true),
-  ('f1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000002', 'Mission Beach Farm', 'MBF', 'Mission Beach', true),
-  ('f1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000002', 'El Arish Property', 'EAP', 'El Arish', true);
 
 -- Sample ft_consignments
 INSERT INTO public.ft_consignments (ft_id, grower_id, entity_code, consignment_date, sale_date, customer_name, product_name, produce_category, quantity, weight_kg, unit_price, total_amount, status) VALUES
@@ -45,7 +44,7 @@ INSERT INTO public.ft_consignments (ft_id, grower_id, entity_code, consignment_d
 
 -- Sample remittance
 INSERT INTO public.remittances (id, grower_id, netsuite_id, rcti_ref, payment_date, grower_name, total_gross, total_deductions, total_invoiced, total_quantity, status) VALUES
-  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'NS-10001', 'RCTI-2026-0042', '2026-03-07', 'North Queensland Banana Co', 8500.00, 1275.00, 7225.00, 340, 'processed');
+  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'NS-10001', 'RCTI-2026-0042', '2026-03-07', 'Tully River Block A', 8500.00, 1275.00, 7225.00, 340, 'processed');
 
 INSERT INTO public.remittance_line_items (remittance_id, sale_date, product, quantity, unit_price, total_amount, customer, produce_category) VALUES
   ('b1000000-0000-0000-0000-000000000001', '2026-03-03', 'Bananas 13.5kg', 180, 22.50, 4050.00, 'Coles', 'Banana'),

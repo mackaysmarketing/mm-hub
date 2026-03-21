@@ -22,21 +22,21 @@ export default async function GrowerPortalLayout({
   const hostname = headersList.get("host") || "localhost";
   const portalMode = getPortalMode(hostname);
 
-  // Fetch grower name if user is scoped to a specific grower
+  // Fetch grower group name if user is scoped to a specific grower_group
   let growerName: string | null = null;
-  if (context.growerId) {
+  if (context.growerGroupId) {
     const supabase = createClient();
-    const { data: grower } = await supabase
-      .from("growers")
+    const { data: growerGroup } = await supabase
+      .from("grower_groups")
       .select("name")
-      .eq("id", context.growerId)
+      .eq("id", context.growerGroupId)
       .single();
-    growerName = grower?.name ?? null;
+    growerName = growerGroup?.name ?? null;
   }
 
   const menuItems = getModuleMenuItems(
     "grower-portal",
-    context.allowedMenuItems
+    context.menuItems
   );
 
   // In grower mode: never show module switcher, even for multi-module users
@@ -61,8 +61,8 @@ export default async function GrowerPortalLayout({
       moduleRole={context.moduleRole}
       capabilities={context.capabilities}
       hasMultipleModules={hasMultipleModules}
-      growerId={context.growerId}
-      farmIds={context.farmIds}
+      growerGroupId={context.growerGroupId}
+      growerIds={context.growerIds}
       financialAccess={context.financialAccess}
     >
       {children}
