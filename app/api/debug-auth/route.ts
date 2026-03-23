@@ -1,77 +1,57 @@
 import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const supabase = createClient();
+  // Approach A: direct createServerClient (this WORKED before)
+  const cookieStore = cookies();
+  const rawCookies = cookieStore.getAll();
 
-  // Step 1: Get the Supabase auth user
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  const directClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // ignore
+          }
+        },
+      },
+    }
+  );
 
-  if (!user) {
-    return NextResponse.json({
-      step: "auth.getUser",
-      success: false,
-      error: authError?.message || "No user found",
-    });
-  }
+  const directResult = await directClient.auth.getUser();
 
-  // Step 2: Look up hub_users row
-  const { data: hubUser, error: hubError } = await supabase
-    .from("hub_users")
-    .select("*")
-    .eq("id", user.id)
-    .single();
-
-  if (hubError || !hubUser) {
-    return NextResponse.json({
-      step: "hub_users lookup",
-      success: false,
-      userId: user.id,
-      email: user.email,
-      error: hubError?.message || "No hub_users row found",
-      hubUser: null,
-    });
-  }
-
-  if (!hubUser.active) {
-    return NextResponse.json({
-      step: "hub_users.active check",
-      success: false,
-      userId: user.id,
-      email: user.email,
-      hubUser: { id: hubUser.id, name: hubUser.name, active: hubUser.active, hub_role: hubUser.hub_role },
-    });
-  }
-
-  // Step 3: Look up module_access
-  const { data: moduleRows, error: moduleError } = await supabase
-    .from("module_access")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("active", true);
+  // Approach B: createClient() from lib/supabase/server.ts
+  const libClient = createClient();
+  const libResult = await libClient.auth.getUser();
 
   return NextResponse.json({
-    step: "complete",
-    success: true,
-    userId: user.id,
-    email: user.email,
-    hubUser: {
-      id: hubUser.id,
-      name: hubUser.name,
-      email: hubUser.email,
-      hub_role: hubUser.hub_role,
-      active: hubUser.active,
+    rawCookieNames: rawCookies.map((c) => c.name),
+    rawCookieCount: rawCookies.length,
+    directClient: {
+      user: directResult.data.user
+        ? { id: directResult.data.user.id, email: directResult.data.user.email }
+        : null,
+      error: directResult.error?.message || null,
     },
-    moduleAccess: (moduleRows || []).map((r: Record<string, unknown>) => ({
-      module_id: r.module_id,
-      module_role: r.module_role,
-      active: r.active,
-    })),
-    moduleError: moduleError?.message || null,
+    libClient: {
+      user: libResult.data.user
+        ? { id: libResult.data.user.id, email: libResult.data.user.email }
+        : null,
+      error: libResult.error?.message || null,
+    },
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
   });
 }
