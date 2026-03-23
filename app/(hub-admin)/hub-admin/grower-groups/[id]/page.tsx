@@ -60,6 +60,7 @@ export default function EditGrowerGroupPage() {
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [address, setAddress] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [active, setActive] = useState(true);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);

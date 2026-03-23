@@ -25,7 +25,7 @@ import {
   BAR_COLORS,
   getCustomerColor,
   formatCurrencyPrecise as fmtCurrency,
-  formatWeight as fmtWeightRaw,
+  // formatWeight — unused; using local fmtWeight below
   formatNumber as fmtNumber,
   safeFetch,
 } from "@/lib/portal-constants";

@@ -60,7 +60,8 @@ export async function GET(request: Request) {
 
       // Apply every cookie (including the new session tokens) to the response.
       cookieMap.forEach(({ name, value, options }) => {
-        response.cookies.set(name, value, (options as any) ?? {});
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase SSR cookie options are untyped
+        response.cookies.set(name, value, (options as Record<string, unknown>) ?? {});
       });
 
       return response;
