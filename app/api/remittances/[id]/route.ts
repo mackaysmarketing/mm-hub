@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getPortalAccessContext, getGrowerFilter } from "@/lib/portal-access";
+import { stripFinancials } from "@/lib/financial-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +9,9 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
+  const accessCtx = await getPortalAccessContext();
+  const growerFilter = getGrowerFilter(accessCtx);
+
   const supabase = createClient();
 
   // Fetch remittance header
@@ -20,6 +25,14 @@ export async function GET(
     return NextResponse.json(
       { error: remError?.message ?? "Remittance not found" },
       { status: 404 }
+    );
+  }
+
+  // Verify user has access to this remittance's grower
+  if (growerFilter && !growerFilter.includes(remittance.grower_id)) {
+    return NextResponse.json(
+      { error: "Not authorized to view this remittance" },
+      { status: 403 }
     );
   }
 
@@ -37,9 +50,16 @@ export async function GET(
       .order("charge_type", { ascending: true }),
   ]);
 
-  return NextResponse.json({
+  let result = {
     remittance,
     lineItems: lineItemsResult.data ?? [],
     charges: chargesResult.data ?? [],
-  });
+  };
+
+  // Apply financial access filtering
+  if (accessCtx.financialAccess["Remittances"] === false) {
+    result = stripFinancials(result);
+  }
+
+  return NextResponse.json(result);
 }

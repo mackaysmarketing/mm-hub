@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireHubAdmin } from "@/lib/auth";
 import { MackaysLogo } from "@/components/mackays-logo";
-import { Shield, Users, Boxes } from "lucide-react";
+import { Shield, Users, Boxes, Building2 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +31,15 @@ export default async function HubAdminLayout({
               >
                 <Users size={18} />
                 Users
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/hub-admin/grower-groups"
+                className="mx-2 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm text-bark transition hover:bg-cream hover:text-soil"
+              >
+                <Building2 size={18} />
+                Grower Groups
               </Link>
             </li>
             <li>

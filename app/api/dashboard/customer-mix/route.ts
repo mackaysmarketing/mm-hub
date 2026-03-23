@@ -29,16 +29,16 @@ export async function GET(request: Request) {
   const periodStart = new Date(Date.now() - days * 86400000);
 
   const accessCtx = await getPortalAccessContext();
-  const growerFilter = getGrowerFilter(accessCtx);
+  const growerFilter = getGrowerFilter(accessCtx, growerId);
 
   const supabase = createClient();
 
   let query = supabase
     .from("ft_consignments")
     .select("customer_name, weight_kg")
-    .gte("consignment_date", periodStart.toISOString().split("T")[0]);
+    .gte("consignment_date", periodStart.toISOString().split("T")[0])
+    .lte("consignment_date", new Date().toISOString().split("T")[0]);
 
-  if (growerId) query = query.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     query = query.eq("produce_category", produceType);
   if (growerFilter) query = query.in("grower_id", growerFilter);

@@ -22,8 +22,6 @@
 - [x] `lib/netsuite.ts` — NetSuite REST API client (OAuth 1.0 TBA via HMAC-SHA256, pagination, rate limit retry)
 - [x] `sync_config` seeded for NetSuite RCTI sync (migration 00003)
 - [x] `app/api/cron/sync-netsuite/route.ts` — Vercel Cron handler (every 30 min, incremental sync, RCTI → remittances + line items + charges)
-- [ ] RCTI PDF retrieval (deferred — requires NetSuite file cabinet access or PDF generation endpoint)
-
 ### Infrastructure
 - [x] `vercel.json` — cron definitions for both FreshTrack (*/15) and NetSuite (*/30)
 - [x] `sync_logs` recording on every cron run (status, records_synced, error_message, timestamps)
@@ -66,11 +64,6 @@
 - [x] Remittances list page — responsive split view (list + detail on desktop, list-only on mobile with links)
 - [x] Remittance detail page (`/remittances/[id]`) — standalone detail view for mobile / direct navigation
 - [x] Debounced search (300ms), status badges, customer colour dots, PDF download link
-
-### Remaining
-- [ ] Orders page
-- [ ] Dispatch tracking
-- [ ] Stock on hand
 
 ## Phase 4: Documents & QA (COMPLETE)
 
@@ -225,13 +218,28 @@ app/(grower-portal)/settings/users/page.tsx            — Grower admin user man
 app/(hub-admin)/hub-admin/users/[id]/page.tsx          — Hub admin user edit with grower group selector
 ```
 
-### Remaining
-- [ ] Hub admin modules page
-- [ ] Forecasting page
-- [ ] Orders page / Dispatch tracking / Stock on hand
-- [ ] Wire up selectedGrowerId from usePortalData() to API calls in dashboard/sales pages
-- [ ] Remittances detail: financial access filtering on detail API
-- [ ] Hub admin: dedicated grower_groups management page (currently managed via user edit)
+### Grower Switcher Wiring (COMPLETE)
+- [x] Dashboard page — passes `selectedGrowerId` as `growerId` query param to all 4 API routes
+- [x] Sales page — passes `selectedGrowerId` to weekly-breakdown and price-landscape API routes
+- [x] Remittances page — passes `selectedGrowerId` to remittances list API
+- [x] All API routes: `getGrowerFilter(accessCtx, growerId)` — unified grower filtering (removed redundant `eq("grower_id")` calls)
+- [x] `/api/dashboard/recent-orders` — added access control via `getPortalAccessContext()` + `getGrowerFilter()`
+- [x] `/api/remittances/[id]` — added grower access validation (403 if unauthorized) + financial access filtering via `stripFinancials()`
+- [x] `/api/remittances` list — added grower group filtering via `getGrowerFilter()`
+
+### Hub Admin Modules Page (COMPLETE)
+- [x] `/api/hub-admin/modules` — GET all modules with user counts per role, assigned user list
+- [x] `/hub-admin/modules` — Expandable module cards with role breakdown (user counts, capabilities), menu items, assigned users table
+
+### Grower Portal Data Pages (COMPLETE)
+- [x] Orders page — filterable/searchable table with status pills, fulfilment %, time range selector, grower switcher support
+- [x] Dispatch tracking — summary cards (loads/pallets/weight), status filter, carrier/truck info table
+- [x] Stock on hand — summary cards (lines/qty/weight/locations), searchable inventory table
+- [x] Forecasting — 4 KPI cards (avg volume, avg revenue, stock on hand, weeks of cover), 26-week volume bar chart with avg reference line, pending orders table
+- [x] Menu items added to `lib/modules.ts` for Orders, Dispatch, Stock (with ClipboardList, Truck, Warehouse icons)
+- [x] All roles updated with new default menu items
+- [x] Sidebar icon map updated in `components/app-sidebar.tsx`
+- [x] All 4 API routes with `getPortalAccessContext()`, `getGrowerFilter()`, and `stripFinancials()` support
 
 ---
 
@@ -251,13 +259,43 @@ app/(hub-admin)/hub-admin/users/[id]/page.tsx          — Hub admin user edit w
 8. Create first `hub_admin` user (insert into `hub_users` with `hub_role: 'hub_admin'`)
 9. Brand Supabase Auth emails with Mackays template (Auth → Email Templates)
 
+## Phase 8: Documentation & Deployment Readiness (COMPLETE)
+
+### Deployment Runbook (COMPLETE)
+- [x] `DEPLOYMENT_RUNBOOK.md` — comprehensive deployment guide covering:
+  - Prerequisites (accounts, access, tools)
+  - First-time deployment (Supabase setup, Azure AD, Vercel project, first admin user, branded emails)
+  - Routine deployments (code-only vs migration deploys, preview deployments)
+  - Rollback procedures (instant Vercel rollback, DB recovery, emergency cron disable)
+  - Environment variables reference (all 12 vars with sources)
+  - Cron jobs (FreshTrack 15min, NetSuite 30min) — monitoring + manual triggers
+  - DNS & domain setup (CNAME records, SSL, RDS IP whitelisting)
+  - Database migration workflow (running, creating, updating field mappings)
+  - Post-deploy verification checklist (smoke tests, API health, cron checks)
+  - Troubleshooting tables (build, runtime, sync, domain issues)
+  - Contacts & escalation matrix
+  - Architecture diagram (ASCII)
+
+### Project Documentation (COMPLETE)
+- [x] `ABOUT.md` — project overview, tech stack, features, architecture summary
+- [x] `PROGRESS.md` — full progress tracker (this file)
+- [x] `.env.local.example` — all env vars documented with comments
+
+### Issue Tracking (COMPLETE)
+- [x] Beads issue tracking initialised (`.beads/` directory)
+- [x] Dolt-backed version control for issues
+
+---
+
 ## Post-launch
 
-- Introspect FreshTrack `v_power_bi_*` views and update `sync_config` mappings (`SELECT * FROM v_power_bi_xxx LIMIT 1`)
-- Confirm NetSuite RCTI record type with finance team (`vendorBill` vs `vendorCredit` vs custom)
-- Verify Vercel static IPs for FreshTrack RDS whitelisting (Vercel → Settings → Security)
-- Test end-to-end sync with real data (trigger manual sync from Sync Status page)
-- Mobile QA pass — test all pages on iPhone/Android at 375px and 768px breakpoints
-- Set up monitoring/alerting for sync failures (Vercel → Monitoring or external: Datadog, PagerDuty)
-- Wire up `usePortalData().selectedGrowerId` in dashboard/sales pages for grower-level filtering in client
-- Test grower_admin user creation flow end-to-end
+- [ ] Introspect FreshTrack `v_power_bi_*` views and update `sync_config` mappings (`SELECT * FROM v_power_bi_xxx LIMIT 1`)
+- [ ] Confirm NetSuite RCTI record type with finance team (`vendorBill` vs `vendorCredit` vs custom)
+- [ ] Verify Vercel static IPs for FreshTrack RDS whitelisting (Vercel → Settings → Security)
+- [ ] Test end-to-end sync with real data (trigger manual sync from Sync Status page)
+- [ ] Mobile QA pass — test all pages on iPhone/Android at 375px and 768px breakpoints
+- [ ] Set up monitoring/alerting for sync failures (Vercel → Monitoring or external: Datadog, PagerDuty)
+- [ ] Wire up `usePortalData().selectedGrowerId` in dashboard/sales pages for grower-level filtering in client
+- [ ] Test grower_admin user creation flow end-to-end
+- [ ] Hub admin: dedicated grower_groups management page (currently managed via user edit)
+- [ ] RCTI PDF retrieval (deferred — requires NetSuite file cabinet access or PDF generation endpoint)

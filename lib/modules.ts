@@ -17,6 +17,9 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
         defaultMenuItems: [
           "Dashboard",
           "Sales & Pricing",
+          "Orders",
+          "Dispatch",
+          "Stock",
           "QA & Compliance",
           "Forecasting",
           "Remittances",
@@ -36,6 +39,9 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
         defaultMenuItems: [
           "Dashboard",
           "Sales & Pricing",
+          "Orders",
+          "Dispatch",
+          "Stock",
           "QA & Compliance",
           "Forecasting",
           "Remittances",
@@ -51,6 +57,9 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
         defaultMenuItems: [
           "Dashboard",
           "Sales & Pricing",
+          "Orders",
+          "Dispatch",
+          "Stock",
           "QA & Compliance",
           "Remittances",
           "Documents",
@@ -64,6 +73,9 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
         defaultMenuItems: [
           "Dashboard",
           "Sales & Pricing",
+          "Orders",
+          "Dispatch",
+          "Stock",
           "Remittances",
           "Documents",
         ],
@@ -82,6 +94,24 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
         label: "Sales & Pricing",
         href: "/sales",
         icon: "TrendingUp",
+      },
+      {
+        id: "Orders",
+        label: "Orders",
+        href: "/orders",
+        icon: "ClipboardList",
+      },
+      {
+        id: "Dispatch",
+        label: "Dispatch",
+        href: "/dispatch",
+        icon: "Truck",
+      },
+      {
+        id: "Stock",
+        label: "Stock on Hand",
+        href: "/stock",
+        icon: "Warehouse",
       },
       {
         id: "Remittances",

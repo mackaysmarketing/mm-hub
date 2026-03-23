@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getPortalAccessContext, getGrowerFilter } from "@/lib/portal-access";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const growerId = searchParams.get("growerId");
+
+  const accessCtx = await getPortalAccessContext();
+  const growerFilter = getGrowerFilter(accessCtx, growerId);
 
   const supabase = createClient();
 
@@ -17,7 +21,7 @@ export async function GET(request: Request) {
     .order("order_date", { ascending: false })
     .limit(10);
 
-  if (growerId) query = query.eq("grower_id", growerId);
+  if (growerFilter) query = query.in("grower_id", growerFilter);
 
   const { data: orders } = await query;
 

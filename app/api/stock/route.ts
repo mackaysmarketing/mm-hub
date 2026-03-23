@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPortalAccessContext, getGrowerFilter } from "@/lib/portal-access";
-import { stripFinancials } from "@/lib/financial-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -16,18 +15,16 @@ export async function GET(request: Request) {
   const supabase = createClient();
 
   let query = supabase
-    .from("remittances")
+    .from("ft_stock")
     .select(
-      "id, rcti_ref, payment_date, grower_name, total_gross, total_deductions, total_invoiced, total_quantity, status, synced_at"
+      "id, product_name, product_code, variety, grade, quantity_on_hand, weight_kg, location, stock_date"
     )
-    .order("payment_date", { ascending: false })
-    .limit(50);
+    .order("product_name", { ascending: true });
 
   if (growerFilter) query = query.in("grower_id", growerFilter);
-
-  if (search && search.trim()) {
+  if (search?.trim()) {
     query = query.or(
-      `rcti_ref.ilike.%${search.trim()}%,grower_name.ilike.%${search.trim()}%`
+      `product_name.ilike.%${search.trim()}%,product_code.ilike.%${search.trim()}%,location.ilike.%${search.trim()}%`
     );
   }
 
@@ -37,12 +34,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let result = data ?? [];
-
-  // Apply financial access filtering
-  if (accessCtx.financialAccess["Remittances"] === false) {
-    result = stripFinancials(result);
-  }
-
-  return NextResponse.json(result);
+  return NextResponse.json(data ?? []);
 }

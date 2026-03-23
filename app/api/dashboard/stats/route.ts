@@ -23,7 +23,6 @@ export async function GET(request: Request) {
   const periodStart = new Date(now.getTime() - days * 86400000);
   const prevPeriodStart = new Date(periodStart.getTime() - days * 86400000);
 
-  // Get portal access context for grower filtering & financial access
   const accessCtx = await getPortalAccessContext();
   const growerFilter = getGrowerFilter(accessCtx, growerId);
 
@@ -35,7 +34,6 @@ export async function GET(request: Request) {
     .select("total_amount, unit_price, quantity, weight_kg")
     .gte("consignment_date", periodStart.toISOString().split("T")[0])
     .lte("consignment_date", now.toISOString().split("T")[0]);
-  if (growerId) currentQ = currentQ.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     currentQ = currentQ.eq("produce_category", produceType);
   if (growerFilter) currentQ = currentQ.in("grower_id", growerFilter);
@@ -46,7 +44,6 @@ export async function GET(request: Request) {
     .select("total_amount, unit_price, quantity, weight_kg")
     .gte("consignment_date", prevPeriodStart.toISOString().split("T")[0])
     .lt("consignment_date", periodStart.toISOString().split("T")[0]);
-  if (growerId) prevQ = prevQ.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     prevQ = prevQ.eq("produce_category", produceType);
   if (growerFilter) prevQ = prevQ.in("grower_id", growerFilter);

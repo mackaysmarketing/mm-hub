@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RemittanceDetail } from "@/components/remittance-detail";
 import { useUser } from "@/hooks/use-user";
+import { usePortalData } from "@/components/portal-shell";
+import { safeFetch } from "@/lib/portal-constants";
 
 interface RemittanceListItem {
   id: string;
@@ -45,7 +47,7 @@ export default function RemittancesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Grower scoping is handled server-side via getGrowerFilter()
+  const { selectedGrowerId } = usePortalData();
   const portalAccess = session?.moduleAccess.find(
     (m) => m.module_id === "grower-portal"
   );
@@ -64,13 +66,14 @@ export default function RemittancesPage() {
   function buildParams(): string {
     const params = new URLSearchParams();
     if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (selectedGrowerId) params.set("growerId", selectedGrowerId);
     return params.toString();
   }
 
   const { data: remittances, isLoading } = useQuery<RemittanceListItem[]>({
-    queryKey: ["remittances-list", debouncedSearch],
+    queryKey: ["remittances-list", debouncedSearch, selectedGrowerId],
     queryFn: () =>
-      fetch(`/api/remittances?${buildParams()}`).then((r) => r.json()),
+      safeFetch<RemittanceListItem[]>(`/api/remittances?${buildParams()}`),
   });
 
   return (

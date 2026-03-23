@@ -5,10 +5,22 @@ import { stripFinancials } from "@/lib/financial-filter";
 
 export const dynamic = "force-dynamic";
 
+const TIME_RANGE_DAYS: Record<string, number> = {
+  "4W": 28,
+  "12W": 84,
+  "26W": 182,
+  "52W": 364,
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const growerId = searchParams.get("growerId");
+  const timeRange = searchParams.get("timeRange") ?? "12W";
+  const status = searchParams.get("status");
   const search = searchParams.get("search");
+
+  const days = TIME_RANGE_DAYS[timeRange] ?? 84;
+  const periodStart = new Date(Date.now() - days * 86400000);
 
   const accessCtx = await getPortalAccessContext();
   const growerFilter = getGrowerFilter(accessCtx, growerId);
@@ -16,18 +28,19 @@ export async function GET(request: Request) {
   const supabase = createClient();
 
   let query = supabase
-    .from("remittances")
+    .from("ft_dispatch")
     .select(
-      "id, rcti_ref, payment_date, grower_name, total_gross, total_deductions, total_invoiced, total_quantity, status, synced_at"
+      "id, load_number, dispatch_date, destination, carrier, truck_rego, pallet_count, total_weight_kg, freight_cost, status"
     )
-    .order("payment_date", { ascending: false })
-    .limit(50);
+    .gte("dispatch_date", periodStart.toISOString().split("T")[0])
+    .order("dispatch_date", { ascending: false })
+    .limit(200);
 
   if (growerFilter) query = query.in("grower_id", growerFilter);
-
-  if (search && search.trim()) {
+  if (status && status !== "all") query = query.eq("status", status);
+  if (search?.trim()) {
     query = query.or(
-      `rcti_ref.ilike.%${search.trim()}%,grower_name.ilike.%${search.trim()}%`
+      `load_number.ilike.%${search.trim()}%,destination.ilike.%${search.trim()}%,carrier.ilike.%${search.trim()}%`
     );
   }
 
@@ -39,8 +52,7 @@ export async function GET(request: Request) {
 
   let result = data ?? [];
 
-  // Apply financial access filtering
-  if (accessCtx.financialAccess["Remittances"] === false) {
+  if (accessCtx.financialAccess["Dispatch"] === false) {
     result = stripFinancials(result);
   }
 

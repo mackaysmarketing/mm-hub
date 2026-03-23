@@ -27,44 +27,14 @@ import { StatCard } from "@/components/stat-card";
 import { TimeRangeSelector } from "@/components/time-range-selector";
 import { ProduceTypeSelector } from "@/components/produce-type-selector";
 import { Skeleton } from "@/components/ui/skeleton";
-
-
-// Produce type definitions with brand colours
-const PRODUCE_TYPES = [
-  { id: "Banana", label: "Banana", color: "#E8B824" },
-  { id: "Avocado", label: "Avocado", color: "#1A5C34" },
-  { id: "Papaya", label: "Papaya", color: "#E05528" },
-  { id: "Frozen Banana", label: "Frozen", color: "#1B3A5C" },
-  { id: "Passionfruit", label: "Passionfruit", color: "#8B5CF6" },
-];
-
-// Customer colours for the stacked bar chart
-const CUSTOMER_COLORS = [
-  "#E50016", // Coles
-  "#125B3C", // Woolworths
-  "#001E5E", // ALDI
-  "#D4A017", // harvest
-  "#6B6760", // stone
-  "#9C9690", // clay
-  "#C8302C", // blaze
-  "#1B3A5C", // frozen
-];
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function formatWeight(value: number): string {
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(1)}t`;
-  }
-  return `${Math.round(value)} kg`;
-}
+import { usePortalData } from "@/components/portal-shell";
+import {
+  PRODUCE_TYPES,
+  BAR_COLORS,
+  formatCurrency,
+  formatWeight,
+  safeFetch,
+} from "@/lib/portal-constants";
 
 interface StatsResponse {
   grossSales: { value: number; change: number };
@@ -99,47 +69,40 @@ interface OrderEntry {
 export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState("12W");
   const [produceType, setProduceType] = useState("all");
+  const { selectedGrowerId } = usePortalData();
 
-  // Build query params — grower scoping is handled server-side via getGrowerFilter()
   function buildParams(): string {
     const params = new URLSearchParams();
     params.set("timeRange", timeRange);
     if (produceType !== "all") params.set("produceType", produceType);
+    if (selectedGrowerId) params.set("growerId", selectedGrowerId);
     return params.toString();
   }
 
   const queryParams = buildParams();
 
-  const { data: stats, isLoading: statsLoading } = useQuery<StatsResponse>({
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<StatsResponse>({
     queryKey: ["dashboard-stats", queryParams],
-    queryFn: () =>
-      fetch(`/api/dashboard/stats?${queryParams}`).then((r) => r.json()),
+    queryFn: () => safeFetch<StatsResponse>(`/api/dashboard/stats?${queryParams}`),
   });
 
-  const { data: volumeData, isLoading: volumeLoading } = useQuery<
-    VolumeWeek[]
-  >({
+  const { data: volumeData, isLoading: volumeLoading } = useQuery<VolumeWeek[]>({
     queryKey: ["dashboard-volume", queryParams],
-    queryFn: () =>
-      fetch(`/api/dashboard/volume?${queryParams}`).then((r) => r.json()),
+    queryFn: () => safeFetch<VolumeWeek[]>(`/api/dashboard/volume?${queryParams}`),
   });
 
-  const { data: customerMix, isLoading: mixLoading } = useQuery<
-    CustomerMixEntry[]
-  >({
+  const { data: customerMix, isLoading: mixLoading } = useQuery<CustomerMixEntry[]>({
     queryKey: ["dashboard-customer-mix", queryParams],
-    queryFn: () =>
-      fetch(`/api/dashboard/customer-mix?${queryParams}`).then((r) =>
-        r.json()
-      ),
+    queryFn: () => safeFetch<CustomerMixEntry[]>(`/api/dashboard/customer-mix?${queryParams}`),
   });
 
-  const { data: recentOrders, isLoading: ordersLoading } = useQuery<
-    OrderEntry[]
-  >({
-    queryKey: ["dashboard-recent-orders"],
-    queryFn: () =>
-      fetch("/api/dashboard/recent-orders").then((r) => r.json()),
+  const { data: recentOrders, isLoading: ordersLoading } = useQuery<OrderEntry[]>({
+    queryKey: ["dashboard-recent-orders", queryParams],
+    queryFn: () => {
+      const p = new URLSearchParams();
+      if (selectedGrowerId) p.set("growerId", selectedGrowerId);
+      return safeFetch<OrderEntry[]>(`/api/dashboard/recent-orders?${p}`);
+    },
   });
 
   // Build stacked bar chart data: flatten weeks into rows with customer columns
@@ -180,6 +143,10 @@ export default function DashboardPage() {
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-[120px] rounded-xl" />
           ))}
+        </div>
+      ) : statsError ? (
+        <div className="rounded-xl border border-blaze/20 bg-blaze/5 p-4 text-sm text-blaze">
+          Failed to load dashboard data. Please try refreshing.
         </div>
       ) : stats ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -248,7 +215,7 @@ export default function DashboardPage() {
                     key={customer}
                     dataKey={customer}
                     stackId="volume"
-                    fill={CUSTOMER_COLORS[i % CUSTOMER_COLORS.length]}
+                    fill={BAR_COLORS[i % BAR_COLORS.length]}
                   />
                 ))}
               </BarChart>

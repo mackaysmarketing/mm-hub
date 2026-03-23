@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
@@ -19,47 +19,19 @@ import { TopBar } from "@/components/top-bar";
 import { TimeRangeSelector } from "@/components/time-range-selector";
 import { ProduceTypeSelector } from "@/components/produce-type-selector";
 import { Skeleton } from "@/components/ui/skeleton";
-
-
-const PRODUCE_TYPES = [
-  { id: "Banana", label: "Banana", color: "#E8B824" },
-  { id: "Avocado", label: "Avocado", color: "#1A5C34" },
-  { id: "Papaya", label: "Papaya", color: "#E05528" },
-  { id: "Frozen Banana", label: "Frozen", color: "#1B3A5C" },
-  { id: "Passionfruit", label: "Passionfruit", color: "#8B5CF6" },
-];
-
-const CUSTOMER_COLORS: Record<string, string> = {
-  Coles: "#E50016",
-  Woolworths: "#125B3C",
-  ALDI: "#001E5E",
-};
-const DEFAULT_CUSTOMER_COLOR = "#6B6760";
-
-function getCustomerColor(name: string): string {
-  const lower = name.toLowerCase();
-  for (const [key, color] of Object.entries(CUSTOMER_COLORS)) {
-    if (lower.includes(key.toLowerCase())) return color;
-  }
-  return DEFAULT_CUSTOMER_COLOR;
-}
-
-// Stable colour palette for stacked bar segments
-const BAR_COLORS = [
-  "#E50016", "#125B3C", "#001E5E", "#D4A017",
-  "#6B6760", "#9C9690", "#C8302C", "#1B3A5C",
-];
-
-function fmtCurrency(v: number): string {
-  return `$${v.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { usePortalData } from "@/components/portal-shell";
+import {
+  PRODUCE_TYPES,
+  BAR_COLORS,
+  getCustomerColor,
+  formatCurrencyPrecise as fmtCurrency,
+  formatWeight as fmtWeightRaw,
+  formatNumber as fmtNumber,
+  safeFetch,
+} from "@/lib/portal-constants";
 
 function fmtWeight(v: number): string {
   return `${v.toLocaleString("en-AU")} kg`;
-}
-
-function fmtNumber(v: number): string {
-  return v.toLocaleString("en-AU");
 }
 
 // --- Types ---
@@ -100,44 +72,37 @@ export default function SalesPage() {
   const [timeRange, setTimeRange] = useState("12W");
   const [produceType, setProduceType] = useState("all");
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
+  const { selectedGrowerId } = usePortalData();
 
-  // Grower scoping is handled server-side via getGrowerFilter()
   function buildParams(): string {
     const params = new URLSearchParams();
     params.set("timeRange", timeRange);
     if (produceType !== "all") params.set("produceType", produceType);
+    if (selectedGrowerId) params.set("growerId", selectedGrowerId);
     return params.toString();
   }
 
   const queryParams = buildParams();
 
-  const { data: breakdown, isLoading: breakdownLoading } = useQuery<
-    WeekBreakdown[]
-  >({
+  const { data: breakdown, isLoading: breakdownLoading } = useQuery<WeekBreakdown[]>({
     queryKey: ["sales-breakdown", queryParams],
-    queryFn: () =>
-      fetch(`/api/sales/weekly-breakdown?${queryParams}`).then((r) =>
-        r.json()
-      ),
-    // Auto-expand first 4 weeks when data arrives
-    select: (data) => {
-      if (expandedWeeks.size === 0 && data.length > 0) {
-        const first4 = new Set(data.slice(0, 4).map((w) => w.week));
-        // Schedule state update outside render
-        setTimeout(() => setExpandedWeeks(first4), 0);
-      }
-      return data;
-    },
+    queryFn: () => safeFetch<WeekBreakdown[]>(`/api/sales/weekly-breakdown?${queryParams}`),
   });
 
-  const { data: landscape, isLoading: landscapeLoading } =
-    useQuery<PriceLandscapeResponse>({
-      queryKey: ["sales-landscape", queryParams],
-      queryFn: () =>
-        fetch(`/api/sales/price-landscape?${queryParams}`).then((r) =>
-          r.json()
-        ),
-    });
+  // Auto-expand first 4 weeks when breakdown data arrives
+  const prevBreakdownRef = useRef<WeekBreakdown[] | undefined>();
+  if (breakdown && breakdown !== prevBreakdownRef.current) {
+    prevBreakdownRef.current = breakdown;
+    if (expandedWeeks.size === 0 && breakdown.length > 0) {
+      const first4 = new Set(breakdown.slice(0, 4).map((w) => w.week));
+      setExpandedWeeks(first4);
+    }
+  }
+
+  const { data: landscape, isLoading: landscapeLoading } = useQuery<PriceLandscapeResponse>({
+    queryKey: ["sales-landscape", queryParams],
+    queryFn: () => safeFetch<PriceLandscapeResponse>(`/api/sales/price-landscape?${queryParams}`),
+  });
 
   function toggleWeek(week: string) {
     setExpandedWeeks((prev) => {

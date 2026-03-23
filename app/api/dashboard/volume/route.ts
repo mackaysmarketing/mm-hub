@@ -20,9 +20,8 @@ export async function GET(request: Request) {
   const days = TIME_RANGE_DAYS[timeRange] ?? 84;
   const periodStart = new Date(Date.now() - days * 86400000);
 
-  // Get portal access context for grower filtering
   const accessCtx = await getPortalAccessContext();
-  const growerFilter = getGrowerFilter(accessCtx);
+  const growerFilter = getGrowerFilter(accessCtx, growerId);
 
   const supabase = createClient();
 
@@ -30,9 +29,9 @@ export async function GET(request: Request) {
     .from("ft_consignments")
     .select("consignment_date, customer_name, weight_kg")
     .gte("consignment_date", periodStart.toISOString().split("T")[0])
+    .lte("consignment_date", new Date().toISOString().split("T")[0])
     .order("consignment_date", { ascending: true });
 
-  if (growerId) query = query.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     query = query.eq("produce_category", produceType);
   if (growerFilter) query = query.in("grower_id", growerFilter);

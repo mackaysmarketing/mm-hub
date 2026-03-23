@@ -21,6 +21,9 @@ import {
   ArrowLeftRight,
   Menu,
   X,
+  ClipboardList,
+  Truck,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,6 +41,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Settings,
   LogOut,
   Sprout,
+  ClipboardList,
+  Truck,
+  Warehouse,
 };
 
 interface AppSidebarProps {

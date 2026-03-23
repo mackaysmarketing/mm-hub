@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   const periodStart = new Date(Date.now() - days * 86400000);
 
   const accessCtx = await getPortalAccessContext();
-  const growerFilter = getGrowerFilter(accessCtx);
+  const growerFilter = getGrowerFilter(accessCtx, growerId);
 
   const supabase = createClient();
 
@@ -42,7 +42,6 @@ export async function GET(request: Request) {
     .gte("consignment_date", periodStart.toISOString().split("T")[0])
     .order("consignment_date", { ascending: true });
 
-  if (growerId) query = query.eq("grower_id", growerId);
   if (produceType && produceType !== "all")
     query = query.eq("produce_category", produceType);
   if (growerFilter) query = query.in("grower_id", growerFilter);
