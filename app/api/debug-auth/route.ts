@@ -1,59 +1,77 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
-  const cookieStore = cookies();
-  const allCookies = cookieStore.getAll();
+export async function GET() {
+  const supabase = createClient();
 
-  // Check which Supabase auth cookies exist
-  const authCookies = allCookies
-    .filter((c) => c.name.includes("auth") || c.name.includes("sb-"))
-    .map((c) => ({
-      name: c.name,
-      valueLength: c.value.length,
-      valuePreview: c.value.substring(0, 30) + "...",
-    }));
-
-  // Try to get the user
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // ignore in read-only context
-          }
-        },
-      },
-    }
-  );
-
+  // Step 1: Get the Supabase auth user
   const {
     data: { user },
-    error,
+    error: authError,
   } = await supabase.auth.getUser();
 
+  if (!user) {
+    return NextResponse.json({
+      step: "auth.getUser",
+      success: false,
+      error: authError?.message || "No user found",
+    });
+  }
+
+  // Step 2: Look up hub_users row
+  const { data: hubUser, error: hubError } = await supabase
+    .from("hub_users")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
+  if (hubError || !hubUser) {
+    return NextResponse.json({
+      step: "hub_users lookup",
+      success: false,
+      userId: user.id,
+      email: user.email,
+      error: hubError?.message || "No hub_users row found",
+      hubUser: null,
+    });
+  }
+
+  if (!hubUser.active) {
+    return NextResponse.json({
+      step: "hub_users.active check",
+      success: false,
+      userId: user.id,
+      email: user.email,
+      hubUser: { id: hubUser.id, name: hubUser.name, active: hubUser.active, hub_role: hubUser.hub_role },
+    });
+  }
+
+  // Step 3: Look up module_access
+  const { data: moduleRows, error: moduleError } = await supabase
+    .from("module_access")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("active", true);
+
   return NextResponse.json({
-    timestamp: new Date().toISOString(),
-    host: request.headers.get("host"),
-    xForwardedHost: request.headers.get("x-forwarded-host"),
-    origin: new URL(request.url).origin,
-    totalCookies: allCookies.length,
-    authCookies,
-    user: user
-      ? { id: user.id, email: user.email, provider: user.app_metadata?.provider }
-      : null,
-    error: error?.message || null,
+    step: "complete",
+    success: true,
+    userId: user.id,
+    email: user.email,
+    hubUser: {
+      id: hubUser.id,
+      name: hubUser.name,
+      email: hubUser.email,
+      hub_role: hubUser.hub_role,
+      active: hubUser.active,
+    },
+    moduleAccess: (moduleRows || []).map((r: Record<string, unknown>) => ({
+      module_id: r.module_id,
+      module_role: r.module_role,
+      active: r.active,
+    })),
+    moduleError: moduleError?.message || null,
   });
 }
