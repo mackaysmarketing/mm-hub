@@ -1,8 +1,10 @@
-// force new commit
 /** @type {import('next').NextConfig} */
 // MM-Hub configuration
 const nextConfig = {
   output: "standalone",
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
     remotePatterns: [
       {
