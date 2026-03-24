@@ -13,6 +13,9 @@ export async function GET(request: Request) {
   if (code) {
     const cookieStore = cookies();
 
+    // Collect cookies that need to be set on the response.
+    // cookieStore.set() may throw for large auth tokens; @supabase/ssr
+    // swallows the error, so we must also set them on the response object.
     const pendingCookies: Array<{
       name: string;
       value: string;
@@ -34,6 +37,11 @@ export async function GET(request: Request) {
                 value,
                 options: options as Record<string, unknown>,
               });
+              try {
+                cookieStore.set(name, value, options);
+              } catch {
+                // Will be set on the redirect response below as fallback
+              }
             });
           },
         },
@@ -48,31 +56,11 @@ export async function GET(request: Request) {
         ? `https://${forwardedHost}`
         : origin;
 
-      // Return a 200 HTML page so we can inspect cookies in the browser
-      // before any redirect/middleware runs
-      const response = new NextResponse(
-        `<!DOCTYPE html>
-<html><head></head><body>
-<h2>Auth callback succeeded</h2>
-<p>Cookies being set: ${pendingCookies.length} auth + 1 canary</p>
-<p>Check DevTools Application > Cookies, then click below:</p>
-<a href="${new URL(destination, redirectBase).toString()}">Continue to app</a>
-<hr>
-<pre id="cookies"></pre>
-<script>document.getElementById("cookies").textContent = document.cookie || "(no cookies visible to JS)";</script>
-</body></html>`,
-        { status: 200, headers: { "Content-Type": "text/html" } }
+      const response = NextResponse.redirect(
+        new URL(destination, redirectBase)
       );
 
-      // Set a canary cookie to test if ANY cookie from this path survives
-      response.cookies.set("callback-canary", "alive", {
-        path: "/",
-        sameSite: "lax",
-        httpOnly: false,
-        maxAge: 3600,
-      });
-
-      // Set all the auth cookies
+      // Apply every pending cookie to the redirect response as well.
       for (const { name, value, options } of pendingCookies) {
         response.cookies.set(name, value, options);
       }

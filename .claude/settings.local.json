@@ -3,7 +3,8 @@
     "allow": [
       "Bash(*)",
       "Write(*)",
-      "Edit(*)"
+      "Edit(*)",
+      "mcp__490f186f-1e83-4719-a49d-26a30de95926__get_runtime_logs"
     ]
   }
 }
