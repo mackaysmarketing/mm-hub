@@ -9,7 +9,6 @@ export async function GET(request: Request) {
   const action = searchParams.get("action");
 
   if (action === "set") {
-    // Try setting a cookie via cookieStore, then redirect to read it
     const cookieStore = cookies();
     try {
       cookieStore.set("test-auth-cookie", "it-works", {
@@ -22,7 +21,8 @@ export async function GET(request: Request) {
       return NextResponse.json({
         step: "set",
         success: true,
-        message: "Cookie set via cookieStore.set(). Now visit /api/test-cookie?action=read",
+        message:
+          "Cookie set via cookieStore.set(). Now visit /api/test-cookie?action=read",
       });
     } catch (e: unknown) {
       return NextResponse.json({
@@ -34,7 +34,6 @@ export async function GET(request: Request) {
   }
 
   if (action === "set-redirect") {
-    // Set cookie then redirect (mimics callback flow)
     const cookieStore = cookies();
     try {
       cookieStore.set("test-redirect-cookie", "redirect-works", {
@@ -55,7 +54,6 @@ export async function GET(request: Request) {
   }
 
   if (action === "set-response") {
-    // Set cookie on a NextResponse.redirect (the old approach)
     const response = NextResponse.redirect(
       new URL("/api/test-cookie?action=read", request.url)
     );
@@ -69,12 +67,34 @@ export async function GET(request: Request) {
     return response;
   }
 
+  // Simulate the exact auth callback: 4 large cookies on a 200 HTML response
+  if (action === "set-large") {
+    const bigValue = "x".repeat(3200);
+    const response = new NextResponse(
+      `<!DOCTYPE html><html><head>
+<meta http-equiv="refresh" content="0;url=/api/test-cookie?action=read">
+</head><body>Redirecting...</body></html>`,
+      { status: 200, headers: { "Content-Type": "text/html" } }
+    );
+
+    // Mimic exact Supabase SSR options from the diagnostic
+    const opts = { path: "/", sameSite: "lax" as const, httpOnly: false, maxAge: 34560000 };
+    response.cookies.set("test-big-0", bigValue, opts);
+    response.cookies.set("test-big-1", bigValue, opts);
+    response.cookies.set("test-big-2", bigValue.substring(0, 1100), opts);
+
+    return response;
+  }
+
   // Default: read all cookies
   const cookieStore = cookies();
   const allCookies = cookieStore.getAll();
   return NextResponse.json({
     step: "read",
     cookieCount: allCookies.length,
-    cookies: allCookies.map((c) => ({ name: c.name, valueLength: c.value.length })),
+    cookies: allCookies.map((c) => ({
+      name: c.name,
+      valueLength: c.value.length,
+    })),
   });
 }
