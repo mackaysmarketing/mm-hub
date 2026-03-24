@@ -3,21 +3,35 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { getPortalMode } from "@/lib/subdomain";
 
+// In-memory diagnostic log for the last callback attempt
+let lastCallbackDiag: Record<string, unknown> | null = null;
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
+
+  // Diagnostic readout: GET /callback?diag=1
+  if (searchParams.get("diag") === "1") {
+    return NextResponse.json(lastCallbackDiag ?? { message: "No callback attempt yet" });
+  }
+
   const code = searchParams.get("code");
   const hostname = request.headers.get("host") || "localhost";
   const mode = getPortalMode(hostname);
   const destination = mode === "grower" ? "/dashboard" : "/";
 
+  const diag: Record<string, unknown> = { timestamp: new Date().toISOString() };
+
   if (code) {
     const cookieStore = cookies();
+    const incomingCookies = cookieStore.getAll();
+    diag.incomingCookies = incomingCookies.map((c) => c.name);
 
     const pendingCookies: Array<{
       name: string;
       value: string;
       options: Record<string, unknown>;
     }> = [];
+    const setErrors: Array<{ name: string; error: string }> = [];
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,23 +39,22 @@ export async function GET(request: Request) {
       {
         cookies: {
           getAll() {
-            const all = cookieStore.getAll();
-            console.log("[callback] getAll() returned:", all.map(c => c.name));
-            return all;
+            return cookieStore.getAll();
           },
           setAll(cookiesToSet) {
-            console.log("[callback] setAll() called with:", cookiesToSet.map(c => ({
-              name: c.name,
-              valueLen: c.value.length,
-              options: c.options,
-            })));
             cookiesToSet.forEach(({ name, value, options }) => {
-              pendingCookies.push({ name, value, options: options as Record<string, unknown> });
+              pendingCookies.push({
+                name,
+                value,
+                options: options as Record<string, unknown>,
+              });
               try {
                 cookieStore.set(name, value, options);
-                console.log(`[callback] cookieStore.set OK: ${name}`);
-              } catch (e) {
-                console.log(`[callback] cookieStore.set THREW for ${name}:`, e);
+              } catch (e: unknown) {
+                setErrors.push({
+                  name,
+                  error: e instanceof Error ? e.message : String(e),
+                });
               }
             });
           },
@@ -50,8 +63,14 @@ export async function GET(request: Request) {
     );
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    console.log("[callback] exchangeCodeForSession error:", error);
-    console.log("[callback] pendingCookies count:", pendingCookies.length);
+
+    diag.exchangeError = error?.message ?? null;
+    diag.pendingCookies = pendingCookies.map((c) => ({
+      name: c.name,
+      valueLength: c.value.length,
+      options: c.options,
+    }));
+    diag.cookieStoreSetErrors = setErrors;
 
     if (!error) {
       const forwardedHost = request.headers.get("x-forwarded-host");
@@ -59,26 +78,27 @@ export async function GET(request: Request) {
         ? `https://${forwardedHost}`
         : origin;
 
-      console.log("[callback] redirecting to:", new URL(destination, redirectBase).toString());
+      const redirectUrl = new URL(destination, redirectBase).toString();
+      diag.redirectUrl = redirectUrl;
 
-      const response = NextResponse.redirect(
-        new URL(destination, redirectBase)
-      );
+      const response = NextResponse.redirect(redirectUrl);
 
       for (const { name, value, options } of pendingCookies) {
         response.cookies.set(name, value, options);
-        console.log(`[callback] response.cookies.set: ${name} (${value.length} chars)`);
       }
 
-      // Log the actual Set-Cookie headers on the response
       const setCookieHeaders = response.headers.getSetCookie();
-      console.log("[callback] Set-Cookie headers count:", setCookieHeaders.length);
-      setCookieHeaders.forEach((h, i) => {
-        console.log(`[callback] Set-Cookie[${i}]:`, h.substring(0, 120) + "...");
-      });
+      diag.setCookieHeaderCount = setCookieHeaders.length;
+      diag.setCookieHeaders = setCookieHeaders.map((h) => ({
+        preview: h.substring(0, 100) + "...",
+        totalLength: h.length,
+      }));
 
+      lastCallbackDiag = diag;
       return response;
     }
+
+    lastCallbackDiag = diag;
   }
 
   return NextResponse.redirect(new URL("/login?error=auth", origin));
