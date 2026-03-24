@@ -47,21 +47,32 @@ export async function GET(request: Request) {
       const redirectBase = forwardedHost
         ? `https://${forwardedHost}`
         : origin;
-      const redirectUrl = new URL(destination, redirectBase).toString();
 
-      // Return a 200 response with Set-Cookie headers instead of a 307 redirect.
-      // Some browser/proxy combinations silently drop Set-Cookie on redirects.
+      // Return a 200 HTML page so we can inspect cookies in the browser
+      // before any redirect/middleware runs
       const response = new NextResponse(
         `<!DOCTYPE html>
-<html><head><meta http-equiv="refresh" content="0;url=${redirectUrl}">
-<script>window.location.href="${redirectUrl}";</script>
-</head><body>Signing in…</body></html>`,
-        {
-          status: 200,
-          headers: { "Content-Type": "text/html" },
-        }
+<html><head></head><body>
+<h2>Auth callback succeeded</h2>
+<p>Cookies being set: ${pendingCookies.length} auth + 1 canary</p>
+<p>Check DevTools Application > Cookies, then click below:</p>
+<a href="${new URL(destination, redirectBase).toString()}">Continue to app</a>
+<hr>
+<pre id="cookies"></pre>
+<script>document.getElementById("cookies").textContent = document.cookie || "(no cookies visible to JS)";</script>
+</body></html>`,
+        { status: 200, headers: { "Content-Type": "text/html" } }
       );
 
+      // Set a canary cookie to test if ANY cookie from this path survives
+      response.cookies.set("callback-canary", "alive", {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: false,
+        maxAge: 3600,
+      });
+
+      // Set all the auth cookies
       for (const { name, value, options } of pendingCookies) {
         response.cookies.set(name, value, options);
       }
