@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Besley } from "next/font/google";
 import { cn } from "@/lib/utils";
+import { QueryProvider } from "@/components/query-provider";
 import "./globals.css";
 
 const inter = Inter({
@@ -39,7 +40,9 @@ export default function RootLayout({
       lang="en"
       className={cn(inter.variable, jetbrainsMono.variable, besley.variable)}
     >
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <QueryProvider>{children}</QueryProvider>
+      </body>
     </html>
   );
 }
