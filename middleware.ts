@@ -3,8 +3,9 @@ import { getPortalMode } from "@/lib/subdomain";
 import { type NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  // Refresh the Supabase session first
-  const response = await updateSession(request);
+  // TEMPORARY: bypass updateSession to test if middleware is clearing cookies
+  // const response = await updateSession(request);
+  const response = NextResponse.next({ request });
 
   // Detect portal mode from hostname
   const hostname = request.headers.get("host") || "localhost";
