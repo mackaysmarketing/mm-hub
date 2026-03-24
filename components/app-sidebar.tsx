@@ -224,6 +224,25 @@ export function AppSidebar({
         )}
       </nav>
 
+      {/* Hub Admin link — anchored above footer for hub_admin users */}
+      {hubUser.hub_role === "hub_admin" && (
+        <div className="border-t border-sand px-2 py-2">
+          <Link
+            href="/hub-admin/users"
+            onClick={handleNavClick}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition",
+              pathname.startsWith("/hub-admin")
+                ? "border-l-[3px] border-canopy bg-parchment font-medium text-forest"
+                : "text-bark hover:bg-cream hover:text-soil"
+            )}
+          >
+            <Settings size={18} />
+            Admin
+          </Link>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="border-t border-sand px-4 py-4">
         {growerName && (
