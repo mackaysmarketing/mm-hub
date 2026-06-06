@@ -20,7 +20,9 @@ export async function GET(request: NextRequest) {
 
   let query = admin
     .from("grower_groups")
-    .select("id, name, code, abn, contact_name, contact_email, contact_phone, address, active, growers(count)")
+    .select(
+      "id, name, code, abn, contact_name, contact_email, contact_phone, address, active, farms(count)"
+    )
     .order("name");
 
   if (search) {
@@ -33,12 +35,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // PostgREST nested-relation counts come back as [{count: N}]; flatten into
+  // a plain farm_count for the UI.
   const groups = (data ?? []).map((g: Record<string, unknown>) => ({
     ...g,
-    grower_count: Array.isArray(g.growers) && g.growers.length > 0
-      ? (g.growers[0] as { count: number }).count
-      : 0,
-    growers: undefined,
+    farm_count:
+      Array.isArray(g.farms) && g.farms.length > 0
+        ? (g.farms[0] as { count: number }).count
+        : 0,
+    farms: undefined,
   }));
 
   return NextResponse.json(groups);

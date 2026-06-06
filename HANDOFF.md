@@ -10,8 +10,14 @@ commit gates on typecheck + lint + 17 vitest tests + `next build`. PR link:
 https://github.com/mackaysmarketing/mm-hub/pull/new/sprint-0-foundation.
 
 Prod Supabase (`mm_hub`, ref `uqzfkhsdyeokwnkpcxui`) currently has migrations
-00005, 00006, 00007, and 00008 applied. Pre-launch (no grower rows yet); the
-shared CRM/quoting tables (`quotes`, `retailers`, etc.) are untouched.
+00005, 00006, 00007, 00008, and 00009 applied. Pre-launch (no grower rows yet);
+the shared CRM/quoting tables (`quotes`, `retailers`, etc.) are untouched.
+
+**Security advisors:** every MM-Hub-owned warning is closed. The 12 portal_*
+SECURITY DEFINER RPC-exposure warnings are gone (helpers moved to a `private`
+schema not exposed by PostgREST in 00009), and the `set_updated_at` search_path
+warning is pinned. Remaining advisors are CRM-module (`quotes`/`file_uploads`
+always-true INSERT) and an auth-level HaveIBeenPwned toggle — neither ours.
 
 ## What works end-to-end now
 
@@ -68,16 +74,20 @@ re-checks). Helper functions in the DB:
 
 | Helper | Returns | Used by |
 |---|---|---|
-| `is_hub_admin()` | bool | gates admin policies + portal_is_internal |
-| `portal_group_id()` | uuid | the user's grower_group_id |
-| `portal_role()` | text | their grower-portal module_role |
-| `portal_is_internal()` | bool | hub_admin OR (admin/staff) — sees all tenants |
-| `portal_farm_ids()` | uuid[]/null | null = all farms in group, else explicit set |
-| `portal_recipient_ids()` | uuid[]/null | null = all recipients in group, else explicit |
-| `portal_can_see_farm(uuid)` | bool | per-farm authz check |
-| `portal_can_see_recipient(uuid)` | bool | per-recipient authz check |
-| `portal_can_see_remittance(uuid)` | bool | resolves through recipient |
-| `portal_can_see_assessment(uuid)` | bool | resolves through farm |
+| `private.is_hub_admin()` | bool | gates admin policies + portal_is_internal |
+| `private.portal_group_id()` | uuid | the user's grower_group_id |
+| `private.portal_role()` | text | their grower-portal module_role |
+| `private.portal_is_internal()` | bool | hub_admin OR (admin/staff) — sees all tenants |
+| `private.portal_farm_ids()` | uuid[]/null | null = all farms in group, else explicit set |
+| `private.portal_recipient_ids()` | uuid[]/null | null = all recipients in group, else explicit |
+| `private.portal_can_see_farm(uuid)` | bool | per-farm authz check |
+| `private.portal_can_see_recipient(uuid)` | bool | per-recipient authz check |
+| `private.portal_can_see_remittance(uuid)` | bool | resolves through recipient |
+| `private.portal_can_see_assessment(uuid)` | bool | resolves through farm |
+
+These live in the `private` schema specifically so PostgREST doesn't expose
+them as RPC. If you add a new helper, keep it in `private` for the same
+reason — anything in `public` becomes callable from any signed-in client.
 
 Storage RLS (`00007`) scopes `storage.objects` in the `documents` bucket by
 path prefix matching the same `portal_can_see_*` helpers, so signed URLs from
@@ -165,6 +175,7 @@ supabase/
     00006_rcti_documents.sql           on-demand PDF storage — applied
     00007_storage_rls.sql              defense-in-depth on storage.objects
     00008_rename_growers_to_farms.sql  table rename + back-compat view
+    00009_private_schema_for_helpers.sql  move RLS helpers out of PostgREST
   fixtures/
     rcti-sample-LMB-Cooroo-2026-06-03.txt   extracted PDF text for future
                                             reconciliation tests

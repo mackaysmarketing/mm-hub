@@ -25,6 +25,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { safeFetch } from "@/lib/portal-constants";
+import { PanelError } from "@/components/panel-error";
 
 interface GrowerGroupRow {
   id: string;
@@ -36,7 +37,7 @@ interface GrowerGroupRow {
   contact_phone: string | null;
   address: string | null;
   active: boolean;
-  grower_count: number;
+  farm_count: number;
 }
 
 export default function GrowerGroupsPage() {
@@ -71,11 +72,10 @@ export default function GrowerGroupsPage() {
     ? `?search=${encodeURIComponent(debouncedSearch.trim())}`
     : "";
 
-  const { data, isLoading } = useQuery<GrowerGroupRow[]>({
+  const { data, isLoading, error } = useQuery<GrowerGroupRow[]>({
     queryKey: ["hub-admin-grower-groups", queryParams],
     queryFn: () =>
-      safeFetch<GrowerGroupRow[]>(`/api/hub-admin/grower-groups${queryParams}`
-      ),
+      safeFetch<GrowerGroupRow[]>(`/api/hub-admin/grower-groups${queryParams}`),
   });
 
   const createMutation = useMutation({
@@ -149,6 +149,8 @@ export default function GrowerGroupsPage() {
             <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load grower groups — try refreshing" />
       ) : (
         <div className="rounded-xl border border-sand bg-warmwhite">
           <Table>
@@ -158,7 +160,7 @@ export default function GrowerGroupsPage() {
                 <TableHead className="text-xs text-stone">Code</TableHead>
                 <TableHead className="text-xs text-stone">ABN</TableHead>
                 <TableHead className="text-xs text-stone">Contact</TableHead>
-                <TableHead className="text-xs text-stone">Growers</TableHead>
+                <TableHead className="text-xs text-stone">Farms</TableHead>
                 <TableHead className="text-xs text-stone">Status</TableHead>
                 <TableHead className="text-xs text-stone w-[60px]"></TableHead>
               </TableRow>
@@ -202,7 +204,7 @@ export default function GrowerGroupsPage() {
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex rounded-full bg-forest/10 px-2 py-0.5 text-xs font-medium text-forest">
-                        {group.grower_count}
+                        {group.farm_count}
                       </span>
                     </TableCell>
                     <TableCell>
