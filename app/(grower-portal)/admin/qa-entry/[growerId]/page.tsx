@@ -17,6 +17,7 @@ import { TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PanelError } from "@/components/panel-error";
 
 const DEFAULT_CATEGORIES = [
   "Food Safety",
@@ -77,15 +78,16 @@ export default function QAEntryGrowerPage() {
   const router = useRouter();
 
   // Fetch grower name
-  const { data: grower, isLoading: growerLoading } = useQuery<{
+  const { data: grower, isLoading: growerLoading, error: growerError } = useQuery<{
     name: string;
     code: string;
   }>({
     queryKey: ["admin-grower-detail", params.growerId],
     queryFn: () =>
-      fetch(`/api/grower-portal/admin/growers/${params.growerId}`).then((r) =>
-        r.json()
-      ),
+      fetch(`/api/grower-portal/admin/growers/${params.growerId}`).then((r) => {
+        if (!r.ok) throw new Error(`Request failed: ${r.status}`);
+        return r.json();
+      }),
   });
 
   // Assessment form state
@@ -222,6 +224,21 @@ export default function QAEntryGrowerPage() {
       <div className="space-y-6">
         <Skeleton className="h-6 w-60" />
         <Skeleton className="h-[400px] rounded-xl" />
+      </div>
+    );
+  }
+
+  if (growerError) {
+    return (
+      <div className="space-y-6">
+        <Link
+          href="/admin/qa-entry"
+          className="inline-flex items-center gap-1.5 text-sm text-stone transition-colors hover:text-soil"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to QA assessments
+        </Link>
+        <PanelError label="Failed to load grower — try refreshing" />
       </div>
     );
   }
