@@ -51,7 +51,7 @@ export function useGrowerContext(
     async function fetchGrowers() {
       const supabase = createClient();
       let query = supabase
-        .from("growers")
+        .from("farms")
         .select("id, name, code")
         .eq("grower_group_id", growerGroupId!)
         .eq("active", true)

@@ -43,7 +43,7 @@ export async function GET() {
   // Hub admin / staff see all growers
   if (isHubAdmin || caps.includes("view_all_growers")) {
     const { data, error } = await admin
-      .from("growers")
+      .from("farms")
       .select("id, name, code, freshtrack_code, abn, email, phone, active, address, grower_group_id")
       .order("name");
 
@@ -60,7 +60,7 @@ export async function GET() {
   }
 
   const { data, error } = await admin
-    .from("growers")
+    .from("farms")
     .select("id, name, code, active")
     .eq("grower_group_id", growerGroupId)
     .eq("active", true)
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
 
   const { data, error } = await admin
-    .from("growers")
+    .from("farms")
     .insert({
       name,
       code,

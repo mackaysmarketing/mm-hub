@@ -13,7 +13,7 @@ export async function GET() {
   const admin = createAdminClient();
 
   const { data, error } = await admin
-    .from("growers")
+    .from("farms")
     .select("id, name, code, grower_group_id")
     .eq("active", true)
     .order("name");

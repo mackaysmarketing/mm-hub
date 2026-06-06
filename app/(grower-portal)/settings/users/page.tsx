@@ -42,7 +42,6 @@ interface GrowerUser {
 interface GrowerInfo {
   id: string;
   name: string;
-  region: string | null;
 }
 
 const MENU_ITEMS = MODULES["grower-portal"].menuItems.map((m) => ({
@@ -364,11 +363,6 @@ function AddUserDialog({
                       className="h-3.5 w-3.5 rounded border-sand text-forest"
                     />
                     {grower.name}
-                    {grower.region && (
-                      <span className="text-xs text-stone">
-                        — {grower.region}
-                      </span>
-                    )}
                   </label>
                 ))}
               </div>
@@ -554,11 +548,6 @@ function EditUserDialog({
                       className="h-3.5 w-3.5 rounded border-sand text-forest"
                     />
                     {grower.name}
-                    {grower.region && (
-                      <span className="text-xs text-stone">
-                        — {grower.region}
-                      </span>
-                    )}
                   </label>
                 ))}
               </div>

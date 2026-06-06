@@ -69,7 +69,7 @@ export async function DELETE(
   // the user can act on rather than silently failing with a FK error.
   const [{ count: farmsCount }, { count: docsCount }] = await Promise.all([
     admin
-      .from("growers")
+      .from("farms")
       .select("id", { count: "exact", head: true })
       .eq("rcti_recipient_id", params.id),
     admin

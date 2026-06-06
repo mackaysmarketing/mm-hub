@@ -30,7 +30,7 @@ export async function PATCH(
   const admin = createAdminClient();
 
   const { data: farm } = await admin
-    .from("growers")
+    .from("farms")
     .select("id, grower_group_id")
     .eq("id", id)
     .single();
@@ -71,7 +71,7 @@ export async function PATCH(
   }
 
   const { data, error } = await admin
-    .from("growers")
+    .from("farms")
     .update(updates)
     .eq("id", id)
     .select()
@@ -129,7 +129,7 @@ export async function DELETE(
     );
   }
 
-  const { error } = await admin.from("growers").delete().eq("id", id);
+  const { error } = await admin.from("farms").delete().eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

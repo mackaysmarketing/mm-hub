@@ -128,7 +128,7 @@ export async function POST(request: Request) {
   // Validate grower_ids belong to this grower_group
   if (grower_ids && grower_ids.length > 0) {
     const { data: growers } = await admin
-      .from("growers")
+      .from("farms")
       .select("id")
       .eq("grower_group_id", ctx.growerGroupId)
       .in("id", grower_ids);
@@ -232,7 +232,7 @@ export async function PATCH(request: Request) {
   // Validate grower_ids
   if (grower_ids && grower_ids.length > 0) {
     const { data: growers } = await admin
-      .from("growers")
+      .from("farms")
       .select("id")
       .eq("grower_group_id", ctx.growerGroupId)
       .in("id", grower_ids);

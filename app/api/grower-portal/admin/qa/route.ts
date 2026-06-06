@@ -26,7 +26,7 @@ export async function GET() {
 
   // Fetch all active growers
   const { data: growers, error: growersError } = await admin
-    .from("growers")
+    .from("farms")
     .select("id, name, code")
     .eq("active", true)
     .order("name");

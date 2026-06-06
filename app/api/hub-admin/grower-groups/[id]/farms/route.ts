@@ -22,7 +22,7 @@ export async function GET(
   const admin = createAdminClient();
 
   const { data, error } = await admin
-    .from("growers")
+    .from("farms")
     .select(
       "id, name, code, freshtrack_code, abn, active, rcti_recipient_id, rcti_recipients(name)"
     )
@@ -91,7 +91,7 @@ export async function POST(
   }
 
   const { data, error } = await admin
-    .from("growers")
+    .from("farms")
     .insert({
       grower_group_id: groupId,
       name,

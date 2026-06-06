@@ -78,7 +78,6 @@ export interface Grower {
   code: string | null;
   freshtrack_code: string | null;
   grower_group_id: string | null;
-  region: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;

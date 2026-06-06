@@ -60,7 +60,7 @@ export async function GET(request: Request) {
 
     // d. Load grower lookup map: freshtrack_code → grower uuid
     const { data: growers } = await supabase
-      .from("growers")
+      .from("farms")
       .select("id, freshtrack_code");
 
     const growerMap = new Map<string, string>();

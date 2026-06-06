@@ -29,16 +29,16 @@ export async function GET(
 
   const [growerResult, consignmentCount, latestRemittance, latestQA] =
     await Promise.all([
-      admin.from("growers").select("*").eq("id", params.id).single(),
+      admin.from("farms").select("*").eq("id", params.id).single(),
       admin
         .from("ft_consignments")
         .select("id", { count: "exact", head: true })
         .eq("grower_id", params.id),
       admin
         .from("remittances")
-        .select("remittance_date")
+        .select("payment_date")
         .eq("grower_id", params.id)
-        .order("remittance_date", { ascending: false })
+        .order("payment_date", { ascending: false })
         .limit(1),
       admin
         .from("qa_assessments")
@@ -56,7 +56,7 @@ export async function GET(
     ...growerResult.data,
     stats: {
       consignment_count: consignmentCount.count ?? 0,
-      latest_remittance_date: latestRemittance.data?.[0]?.remittance_date ?? null,
+      latest_remittance_date: latestRemittance.data?.[0]?.payment_date ?? null,
       latest_qa: latestQA.data?.[0] ?? null,
     },
   });
@@ -98,7 +98,7 @@ export async function PATCH(
   const admin = createAdminClient();
 
   const { data, error } = await admin
-    .from("growers")
+    .from("farms")
     .update(updates)
     .eq("id", params.id)
     .select()

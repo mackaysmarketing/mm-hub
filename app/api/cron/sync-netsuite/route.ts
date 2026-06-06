@@ -80,7 +80,7 @@ export async function GET(request: Request) {
     // d. Load grower lookup map: freshtrack_code → grower uuid
     //    NetSuite entity codes map via the same grower.freshtrack_code field
     const { data: growers } = await supabase
-      .from("growers")
+      .from("farms")
       .select("id, freshtrack_code, name, abn");
 
     const growerByCode = new Map<
