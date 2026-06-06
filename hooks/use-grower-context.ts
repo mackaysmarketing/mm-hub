@@ -8,7 +8,6 @@ interface GrowerInfo {
   id: string;
   name: string;
   code: string | null;
-  region: string | null;
 }
 
 interface UseGrowerContextReturn {
@@ -20,11 +19,25 @@ interface UseGrowerContextReturn {
   loading: boolean;
 }
 
+const STORAGE_PREFIX = "mm-hub:selected-farm:";
+
+/**
+ * Loads the farms (rows in `growers` table) the caller can see for the current
+ * group, persists the selected farm across navigations/reloads, and exposes the
+ * standard pieces the portal shell + every data route need.
+ *
+ * Behaviour (matches the operator's spec):
+ *   * fetch from RLS-scoped `growers` table (not the API to avoid an extra hop)
+ *   * if exactly 1 farm: lock the selection to it; switcher hidden
+ *   * if >1: default to "All Farms" (null), persist any explicit choice in
+ *     localStorage keyed by grower_group_id so groups don't leak selections
+ *     into each other
+ */
 export function useGrowerContext(
   portalContext: GrowerPortalContext
 ): UseGrowerContextReturn {
   const [growers, setGrowers] = useState<GrowerInfo[]>([]);
-  const [selectedGrowerId, setSelectedGrowerId] = useState<string | null>(null);
+  const [selectedGrowerId, setSelectedGrowerIdState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const { growerGroupId, growerIds } = portalContext;
@@ -39,12 +52,11 @@ export function useGrowerContext(
       const supabase = createClient();
       let query = supabase
         .from("growers")
-        .select("id, name, code, region")
+        .select("id, name, code")
         .eq("grower_group_id", growerGroupId!)
         .eq("active", true)
         .order("name");
 
-      // If user has specific grower_ids, filter to those
       if (growerIds && growerIds.length > 0) {
         query = query.in("id", growerIds);
       }
@@ -53,9 +65,17 @@ export function useGrowerContext(
       const growerList = (data ?? []) as GrowerInfo[];
       setGrowers(growerList);
 
-      // If only one grower, lock to it
+      // Single farm → lock to it. Multiple → restore persisted choice if still
+      // valid, else default to "All Farms" (null).
       if (growerList.length === 1) {
-        setSelectedGrowerId(growerList[0].id);
+        setSelectedGrowerIdState(growerList[0].id);
+      } else if (typeof window !== "undefined") {
+        const saved = window.localStorage.getItem(STORAGE_PREFIX + growerGroupId);
+        if (saved && growerList.some((g) => g.id === saved)) {
+          setSelectedGrowerIdState(saved);
+        } else {
+          setSelectedGrowerIdState(null); // "All Farms" default
+        }
       }
 
       setLoading(false);
@@ -64,13 +84,25 @@ export function useGrowerContext(
     fetchGrowers();
   }, [growerGroupId, growerIds]);
 
+  // Wrap setter to persist; single-farm callers are no-ops (selection is fixed).
+  const setSelectedGrowerId = (id: string | null) => {
+    if (growers.length === 1) return;
+    setSelectedGrowerIdState(id);
+    if (typeof window !== "undefined" && growerGroupId) {
+      const key = STORAGE_PREFIX + growerGroupId;
+      if (id) window.localStorage.setItem(key, id);
+      else window.localStorage.removeItem(key);
+    }
+  };
+
   const showGrowerSwitcher = growers.length > 1;
   const isConsolidated = selectedGrowerId === null && growers.length > 1;
 
   return {
     growers,
-    selectedGrowerId: growers.length === 1 ? growers[0]?.id ?? null : selectedGrowerId,
-    setSelectedGrowerId: growers.length === 1 ? () => {} : setSelectedGrowerId,
+    selectedGrowerId:
+      growers.length === 1 ? growers[0]?.id ?? null : selectedGrowerId,
+    setSelectedGrowerId,
     showGrowerSwitcher,
     isConsolidated,
     loading,

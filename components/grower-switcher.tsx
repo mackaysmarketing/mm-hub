@@ -4,7 +4,6 @@ interface GrowerInfo {
   id: string;
   name: string;
   code: string | null;
-  region: string | null;
 }
 
 interface GrowerSwitcherProps {
@@ -13,6 +12,12 @@ interface GrowerSwitcherProps {
   onChange: (growerId: string | null) => void;
 }
 
+/**
+ * Farm selector for the grower portal. Per spec:
+ *   * hidden entirely when the caller has exactly 1 farm
+ *   * defaults to "All Farms" when >1, and the caller's choice persists across
+ *     navigations (the hook handles that via localStorage keyed by group)
+ */
 export function GrowerSwitcher({
   growers,
   selectedGrowerId,
@@ -25,13 +30,13 @@ export function GrowerSwitcher({
       value={selectedGrowerId ?? ""}
       onChange={(e) => onChange(e.target.value || null)}
       className="rounded-md border border-sand bg-warmwhite px-3 py-1.5 text-sm text-soil focus:outline-none focus:ring-1 focus:ring-forest"
+      aria-label="Select farm"
     >
-      <option value="">All growers</option>
-      {growers.map((grower) => (
-        <option key={grower.id} value={grower.id}>
-          {grower.name}
-          {grower.region ? ` — ${grower.region}` : ""}
-          {grower.code ? ` (${grower.code})` : ""}
+      <option value="">All Farms</option>
+      {growers.map((farm) => (
+        <option key={farm.id} value={farm.id}>
+          {farm.name}
+          {farm.code ? ` (${farm.code})` : ""}
         </option>
       ))}
     </select>
