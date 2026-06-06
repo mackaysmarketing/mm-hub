@@ -1,20 +1,17 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalAccessContext, hasMenuAccess } from "@/lib/portal-access";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/rcti-documents/[id]/download — returns a short-lived signed URL
- * (60s) for the requested RCTI PDF.
- *
- * Authorization: the row lookup goes through the RLS-enforced user client, so a
- * caller outside the recipient's scope resolves to "not found" — we never emit
- * a URL for content the caller can't see. The signed URL itself is minted by
- * the admin client because the storage.objects table has no per-row policies
- * (the bucket is private); reading from storage via the user client without
- * policies would fail.
+ * GET /api/rcti-documents/[id]/download — short-lived signed URL (60s) for the
+ * RCTI PDF. Both layers gate access:
+ *   1. table RLS on rcti_documents (portal_can_see_recipient) — the row
+ *      lookup returns "not found" to anyone outside the caller's recipient scope
+ *   2. storage RLS on storage.objects (00007_storage_rls) — the user client
+ *      can only sign URLs for paths visible under their scope
+ * Defense in depth — neither layer alone is the boundary.
  */
 export async function GET(
   _request: Request,
@@ -35,8 +32,7 @@ export async function GET(
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
-  const admin = createAdminClient();
-  const { data: signed, error: urlErr } = await admin.storage
+  const { data: signed, error: urlErr } = await supabase.storage
     .from("documents")
     .createSignedUrl(doc.storage_path, 60, { download: doc.filename });
   if (urlErr || !signed) {
