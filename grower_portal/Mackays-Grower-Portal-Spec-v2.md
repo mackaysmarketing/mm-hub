@@ -1,5 +1,22 @@
 # Mackays Marketing — Grower Portal
 
+> ## ⚠️ DEPRECATED — superseded by [../HANDOFF.md](../HANDOFF.md)
+>
+> This spec was a pre-build blueprint and **does not match the shipped system**.
+> Notable mismatches:
+> - Stack: this doc says Prisma ORM; the build uses the Supabase JS client.
+>   It also says NextAuth / `portal_users`; the build uses Supabase Auth + a
+>   two-tier `hub_users` + `module_access` model with grower-portal as a module.
+> - Data model: this doc describes a single-axis `growers`-only model; the
+>   shipped system uses two axes — `farms` (production) + `rcti_recipients`
+>   (financial) — under `grower_groups` (see [HANDOFF.md](../HANDOFF.md)).
+> - APIs: the `/api/remittances` and `/api/remittances/[id]` endpoints listed
+>   here are removed. RCTIs are served via `/api/rcti-documents` (on-demand PDF
+>   upload) until the verified NetSuite raw export lands.
+>
+> Keep this file as a historical reference for the pre-build intent. Do not
+> use it as architectural guidance for new work — read HANDOFF.md instead.
+
 ## Developer Specification Document
 
 **Version:** 2.0 — Production Architecture

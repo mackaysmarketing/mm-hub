@@ -151,6 +151,23 @@ export default function GrowerGroupsPage() {
         </div>
       ) : error ? (
         <PanelError label="Failed to load grower groups — try refreshing" />
+      ) : groups.length === 0 && !debouncedSearch ? (
+        <div className="flex flex-col items-center rounded-xl border border-dashed border-sand bg-warmwhite py-12 text-center">
+          <p className="text-sm font-medium text-soil">No grower groups yet</p>
+          <p className="mt-1 max-w-sm text-xs text-stone">
+            A grower group is the tenant boundary — it holds RCTI recipients
+            (who Mackays pays) and farms (production entities). Add your first
+            one and you can compose its recipients and farms inside.
+          </p>
+          <Button
+            size="sm"
+            className="mt-4 bg-canopy text-white hover:bg-canopy/90"
+            onClick={() => setAddOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Add Your First Group
+          </Button>
+        </div>
       ) : (
         <div className="rounded-xl border border-sand bg-warmwhite">
           <Table>
@@ -172,7 +189,7 @@ export default function GrowerGroupsPage() {
                     colSpan={7}
                     className="py-8 text-center text-sm text-stone"
                   >
-                    No grower groups found
+                    No grower groups match &quot;{debouncedSearch}&quot;
                   </TableCell>
                 </TableRow>
               ) : (
