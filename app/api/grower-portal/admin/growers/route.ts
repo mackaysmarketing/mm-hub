@@ -61,7 +61,7 @@ export async function GET() {
 
   const { data, error } = await admin
     .from("growers")
-    .select("id, name, code, region, active")
+    .select("id, name, code, active")
     .eq("grower_group_id", growerGroupId)
     .eq("active", true)
     .order("name");

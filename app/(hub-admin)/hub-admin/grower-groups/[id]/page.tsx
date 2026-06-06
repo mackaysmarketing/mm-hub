@@ -17,16 +17,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
 import { RctiRecipientsSection } from "@/components/hub-admin/rcti-recipients-section";
 import { RctiDocumentsSection } from "@/components/hub-admin/rcti-documents-section";
+import { FarmsSection } from "@/components/hub-admin/farms-section";
 
 interface GrowerRow {
   id: string;
@@ -278,61 +271,11 @@ export default function EditGrowerGroupPage() {
         </div>
       </div>
 
-      {/* Growers in Group */}
-      <div className="rounded-xl border border-sand bg-warmwhite p-6 space-y-4">
-        <h2 className="text-sm font-semibold text-soil">
-          Growers in this Group{" "}
-          <span className="ml-1 text-xs font-normal text-stone">
-            ({group.growers.length})
-          </span>
-        </h2>
-
-        {group.growers.length === 0 ? (
-          <p className="text-sm text-stone">
-            No growers assigned to this group yet.
-          </p>
-        ) : (
-          <div className="rounded-lg border border-sand/60">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-sand hover:bg-transparent">
-                  <TableHead className="text-xs text-stone">Name</TableHead>
-                  <TableHead className="text-xs text-stone">Code</TableHead>
-                  <TableHead className="text-xs text-stone">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {group.growers.map((grower) => (
-                  <TableRow key={grower.id} className="border-sand/50">
-                    <TableCell className="font-medium text-soil">
-                      {grower.name}
-                    </TableCell>
-                    <TableCell className="text-bark">
-                      {grower.code ?? (
-                        <span className="text-stone">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          grower.active
-                            ? "bg-canopy/10 text-canopy"
-                            : "bg-blaze/10 text-blaze"
-                        }`}
-                      >
-                        {grower.active ? "Active" : "Inactive"}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </div>
-
-      {/* RCTI Recipients */}
+      {/* RCTI Recipients (financial axis — add first; farms below reference these) */}
       <RctiRecipientsSection groupId={params.id} />
+
+      {/* Farms (production axis — assigned to a recipient) */}
+      <FarmsSection groupId={params.id} />
 
       {/* RCTI Documents */}
       <RctiDocumentsSection groupId={params.id} />
