@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MM-Hub
 
-## Getting Started
+Internal data platform for **Mackays Marketing**. Aggregates data from
+FreshTrack (packhouse / logistics) and NetSuite (finance) and presents it to
+growers and internal staff through role-based portal interfaces.
 
-First, run the development server:
+## Read first
+
+| If you are… | Start here |
+|---|---|
+| **New to the codebase** | [`HANDOFF.md`](HANDOFF.md) — current architecture, what works end-to-end, what's deferred, traps recorded. |
+| **Spinning up the rebuild on a fresh DB** | [`FOUNDATION-RECONCILIATION.md`](FOUNDATION-RECONCILIATION.md) — why the repo and the live Supabase had forked, and the source-of-truth decision. |
+| **Looking for the high-level "what does it do"** | [`ABOUT.md`](ABOUT.md) — product summary + tech stack. |
+| **An agent picking up work** | [`AGENTS.md`](AGENTS.md) — bd issue-tracking + "Landing the Plane" workflow. |
+| **Deploying** | [`DEPLOYMENT_RUNBOOK.md`](DEPLOYMENT_RUNBOOK.md). |
+
+> **Historical reference only:** `PROGRESS.md` and `grower_portal/Mackays-Grower-Portal-Spec-v2.md` describe the **pre-rebuild** state — useful as a record of original intent, but do not use them as architectural guidance. HANDOFF.md is the current source of truth.
+
+## Stack
+
+Next.js 14 (App Router, standalone) · React 18 · Supabase (Postgres + Auth + Storage + RLS) · TanStack Query 5 · shadcn/ui · Recharts · `pg` Pool for FreshTrack RDS · `oauth-1.0a` for NetSuite TBA · Vercel (Sydney).
+
+## Quick checks
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install        # one-time
+npm run dev        # local Next.js dev server
+npm test           # vitest unit tests (17 currently)
+npm run typecheck  # tsc --noEmit
+npm run lint       # next lint
+npm run build      # production build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+CI runs `typecheck + lint + tests` on every PR to `main`
+(see `.github/workflows/ci.yml`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Production health probe: `GET /api/health` → `{status:"ok", db:"ok"}` or 503.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Project structure
 
-## Learn More
+```
+app/                Next.js App Router (auth, grower portal, hub admin, /api/*)
+components/         shared UI + portal shell + hub-admin sections
+hooks/              React hooks (grower context, mobile, user session)
+lib/                server utilities (auth, portal-access, financial-filter,
+                    supabase clients, freshtrack, netsuite, modules,
+                    subdomain, sync-utils)
+types/              TypeScript type definitions
+supabase/
+  migrations/       SQL migrations 00001-00009
+  fixtures/         the LMB Cooroo RCTI sample as extracted text
+  tests/            RLS isolation suite (run manually against a branch)
+.github/workflows/  CI gate (typecheck + lint + tests)
+.beads/             bd issue tracker (Dolt-backed)
+.claude/            local Claude Code settings
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Module access in one screen
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+A user gets module access through `module_access.config` keys:
+`grower_group_id` (tenant), `grower_ids` (farm-axis scope; null = all farms in group),
+`recipient_ids` (financial-axis scope; null = all recipients in group),
+`allowed_menu_items` (server-enforced page permissions), `financial_access` (per-page money toggle),
+`capabilities` (named permissions).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+RLS in the DB is the authoritative tenant boundary (helpers live in the
+`private` schema). App-layer filters are defense-in-depth. See HANDOFF.md for
+the full table.
