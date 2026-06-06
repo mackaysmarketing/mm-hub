@@ -15,6 +15,7 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import { PanelError } from "@/components/panel-error";
 
 interface GrowerQARow {
   grower_id: string;
@@ -72,7 +73,7 @@ function scoreColor(score: number | null, status: string | null): string {
 export default function QAEntryPage() {
   const router = useRouter();
 
-  const { data, isLoading } = useQuery<GrowerQARow[]>({
+  const { data, isLoading, error } = useQuery<GrowerQARow[]>({
     queryKey: ["admin-qa-growers"],
     queryFn: () =>
       fetch("/api/grower-portal/admin/qa").then((r) => r.json()),
@@ -90,6 +91,8 @@ export default function QAEntryPage() {
             <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load QA data — try refreshing" />
       ) : (
         <div className="rounded-xl border border-sand bg-warmwhite">
           <Table>

@@ -23,6 +23,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { MODULES } from "@/lib/modules";
+import { PanelError } from "@/components/panel-error";
 
 interface GrowerUser {
   user_id: string;
@@ -54,7 +55,7 @@ export default function GrowerUsersPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editUser, setEditUser] = useState<GrowerUser | null>(null);
 
-  const { data: users, isLoading } = useQuery<GrowerUser[]>({
+  const { data: users, isLoading, error } = useQuery<GrowerUser[]>({
     queryKey: ["grower-admin-users"],
     queryFn: () =>
       fetch("/api/grower-portal/admin/users").then((r) => r.json()),
@@ -85,6 +86,8 @@ export default function GrowerUsersPage() {
             <Skeleton key={i} className="h-14 rounded-lg" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load users — try refreshing" />
       ) : (
         <div className="rounded-xl border border-sand bg-warmwhite">
           <div className="overflow-x-auto">

@@ -24,6 +24,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { PanelError } from "@/components/panel-error";
 
 interface Grower {
   id: string;
@@ -54,7 +55,7 @@ export default function GrowerManagementPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const { data: growers, isLoading } = useQuery<Grower[]>({
+  const { data: growers, isLoading, error } = useQuery<Grower[]>({
     queryKey: ["admin-growers"],
     queryFn: () =>
       fetch("/api/grower-portal/admin/growers").then((r) => r.json()),
@@ -132,6 +133,8 @@ export default function GrowerManagementPage() {
             <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load farms — try refreshing" />
       ) : (
         <div className="rounded-xl border border-sand bg-warmwhite">
           <Table>

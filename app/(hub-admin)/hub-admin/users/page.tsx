@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/dialog";
 import { MODULES } from "@/lib/modules";
 import type { ModuleId } from "@/types/modules";
+import { PanelError } from "@/components/panel-error";
+import { safeFetch } from "@/lib/portal-constants";
 
 interface ModuleAccess {
   id: string;
@@ -85,10 +87,10 @@ export default function UsersPage() {
     ? `?search=${encodeURIComponent(debouncedSearch.trim())}`
     : "";
 
-  const { data, isLoading } = useQuery<{ users: HubUserRow[] }>({
+  const { data, isLoading, error } = useQuery<{ users: HubUserRow[] }>({
     queryKey: ["hub-admin-users", queryParams],
     queryFn: () =>
-      fetch(`/api/hub-admin/users${queryParams}`).then((r) => r.json()),
+      safeFetch<{ users: HubUserRow[] }>(`/api/hub-admin/users${queryParams}`),
   });
 
   const createMutation = useMutation({
@@ -154,6 +156,8 @@ export default function UsersPage() {
             <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load users — try refreshing" />
       ) : (
         <div className="rounded-xl border border-sand bg-warmwhite">
           <Table>

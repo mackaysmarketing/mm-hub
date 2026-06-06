@@ -20,6 +20,7 @@ import {
 import { RctiRecipientsSection } from "@/components/hub-admin/rcti-recipients-section";
 import { RctiDocumentsSection } from "@/components/hub-admin/rcti-documents-section";
 import { FarmsSection } from "@/components/hub-admin/farms-section";
+import { PanelError } from "@/components/panel-error";
 
 interface GrowerRow {
   id: string;
@@ -60,7 +61,7 @@ export default function EditGrowerGroupPage() {
   const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const { data: group, isLoading } = useQuery<GroupDetail>({
+  const { data: group, isLoading, error } = useQuery<GroupDetail>({
     queryKey: ["hub-admin-grower-group", params.id],
     queryFn: () =>
       fetch(`/api/hub-admin/grower-groups/${params.id}`).then((r) => {
@@ -143,6 +144,10 @@ export default function EditGrowerGroupPage() {
         <Skeleton className="h-64 rounded-xl" />
       </div>
     );
+  }
+
+  if (error) {
+    return <PanelError label="Failed to load grower group — try refreshing" />;
   }
 
   if (!group) {

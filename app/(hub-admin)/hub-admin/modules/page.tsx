@@ -25,6 +25,7 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import { PanelError } from "@/components/panel-error";
 
 const MODULE_ICONS: Record<string, React.ReactNode> = {
   Sprout: <Sprout className="h-5 w-5" />,
@@ -81,7 +82,7 @@ export default function ModulesPage() {
     new Set(["grower-portal"])
   );
 
-  const { data: modules, isLoading } = useQuery<ModuleData[]>({
+  const { data: modules, isLoading, error } = useQuery<ModuleData[]>({
     queryKey: ["hub-admin-modules"],
     queryFn: () => fetch("/api/hub-admin/modules").then((r) => r.json()),
   });
@@ -105,6 +106,8 @@ export default function ModulesPage() {
             <Skeleton key={i} className="h-48 rounded-xl" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load modules — try refreshing" />
       ) : (
         <div className="space-y-4">
           {(modules ?? []).map((mod) => {

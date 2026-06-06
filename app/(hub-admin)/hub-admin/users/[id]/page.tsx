@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { MODULES } from "@/lib/modules";
 import type { ModuleId } from "@/types/modules";
+import { PanelError } from "@/components/panel-error";
 
 interface ModuleAccessRow {
   id: string;
@@ -82,7 +83,7 @@ export default function EditUserPage() {
   const [addModuleOpen, setAddModuleOpen] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const { data: user, isLoading } = useQuery<UserDetail>({
+  const { data: user, isLoading, error } = useQuery<UserDetail>({
     queryKey: ["hub-admin-user", params.id],
     queryFn: () =>
       fetch(`/api/hub-admin/users/${params.id}`).then((r) => r.json()),
@@ -243,6 +244,10 @@ export default function EditUserPage() {
         <Skeleton className="h-[200px] rounded-xl" />
       </div>
     );
+  }
+
+  if (error) {
+    return <PanelError label="Failed to load user — try refreshing" />;
   }
 
   if (!user) {

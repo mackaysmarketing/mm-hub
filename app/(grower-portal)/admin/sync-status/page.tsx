@@ -15,6 +15,7 @@ import {
 import { TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PanelError } from "@/components/panel-error";
 
 interface SyncLog {
   id: string;
@@ -173,7 +174,7 @@ export default function SyncStatusPage() {
   const [logFilter, setLogFilter] = useState<"all" | "freshtrack" | "netsuite">("all");
   const [expandedConfig, setExpandedConfig] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery<SyncData>({
+  const { data, isLoading, error } = useQuery<SyncData>({
     queryKey: ["admin-sync-status"],
     queryFn: () =>
       fetch("/api/grower-portal/admin/sync").then((r) => r.json()),
@@ -216,6 +217,15 @@ export default function SyncStatusPage() {
     logFilter === "all"
       ? logs
       : logs.filter((l) => l.source === logFilter);
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <TopBar title="Sync Status" />
+        <PanelError label="Failed to load sync status — try refreshing" />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
