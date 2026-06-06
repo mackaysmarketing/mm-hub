@@ -183,6 +183,15 @@ supabase/
     rls_isolation.sql                  the persona matrix as a runnable script
 ```
 
+## Quick health check
+
+The fastest smoke test against prod is `GET /api/health` — it returns
+`{status:"ok", db:"ok"}` (200) when the app process is up and Supabase
+answers a trivial query, or `{status:"degraded", db:"error", db_error: ...}`
+(503) otherwise. No auth required, no tenant data touched. Use this for
+Vercel monitoring, or as the first "is anything answering?" probe before
+walking the full smoke test.
+
 ## Two things the user owns next
 
 1. **Confirm the rebuild works end-to-end** by doing the manual smoke test
