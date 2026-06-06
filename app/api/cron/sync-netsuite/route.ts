@@ -28,6 +28,22 @@ export async function GET(request: Request) {
     }
   }
 
+  // a.1 Feature flag — this sync is DISABLED pending review-finding fixes:
+  //   * SY-1 (RCTI->grower attribution 1:1 — needs recipient_id population)
+  //   * SY-2 (non-transactional delete-then-insert wipes line items on partial failure)
+  //   * SY-4 (UTC timestamp into NetSuite filter; no TZ normalisation)
+  //   * SY-5 (best-guess field mappings; silent zero/null on a wrong key)
+  // RCTIs are served via on-demand PDF upload (rcti_documents) for now — see
+  // FOUNDATION-RECONCILIATION.md. Re-enable only after the raw NetSuite export
+  // is verified and a transactional rewrite lands.
+  if (process.env.NETSUITE_SYNC_ENABLED !== "true") {
+    return NextResponse.json({
+      status: "disabled",
+      reason:
+        "NetSuite sync is gated by NETSUITE_SYNC_ENABLED until the consolidation pipeline (SY-1/2/4/5) is rebuilt.",
+    });
+  }
+
   const supabase = createAdminClient();
   let syncLogId: string | null = null;
   let recordsSynced = 0;
