@@ -56,7 +56,8 @@ export interface UserSession {
 
 export interface GrowerPortalConfig {
   grower_group_id: string | null;        // which grower_group this user belongs to
-  grower_ids: string[] | null;           // null = all growers in group, array = specific growers only
+  grower_ids: string[] | null;           // FARM axis: null = all farms in group, array = specific farms
+  recipient_ids: string[] | null;        // RCTI-RECIPIENT axis: null = all recipients in group, array = specific
   allowed_menu_items: string[];
   financial_access: Record<string, boolean>;  // per menu item: true = see financials, false = hide
   capabilities: string[];

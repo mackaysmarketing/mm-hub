@@ -35,21 +35,23 @@ describe("stripFinancials — correct behaviour", () => {
   });
 });
 
-describe("stripFinancials — KNOWN GAPS (executable evidence of finding AC-4/financial-filter)", () => {
-  // The matcher is a substring denylist (price/amount/cost/gross/invoiced/deduction)
-  // plus an explicit name set. Fields that name money without those tokens LEAK.
-  // These tests assert the CURRENT (leaky) behaviour so the gap is visible and
-  // tracked; flip each expectation when the matcher is hardened (Sprint 2/5).
-  it("LEAK: a 'revenue' field is NOT stripped (no denylist token)", () => {
-    const out = stripFinancials({ avgWeeklyRevenue: 12345 });
-    // BUG: should be null once the financial filter is corrected.
-    expect(out.avgWeeklyRevenue).toBe(12345);
+describe("stripFinancials — previously-leaking fields now redacted (AC-4 fix)", () => {
+  // The matcher now covers revenue/payable/payout in addition to the original
+  // price/amount/cost/gross/invoiced/deduction tokens.
+  it("strips a 'revenue' field", () => {
+    expect(stripFinancials({ avgWeeklyRevenue: 12345 }).avgWeeklyRevenue).toBeNull();
   });
 
-  it("LEAK: a 'net_payable'/'payout' style field is NOT stripped", () => {
+  it("strips 'net_payable'/'payout' style fields", () => {
     const out = stripFinancials({ netPayable: 999, payout: 500 });
-    // BUG: both should be null once the financial filter is corrected.
-    expect(out.netPayable).toBe(999);
-    expect(out.payout).toBe(500);
+    expect(out.netPayable).toBeNull();
+    expect(out.payout).toBeNull();
+  });
+
+  it("does not over-strip a non-financial field that merely contains a substring", () => {
+    // guards against false positives — 'quantity'/'weight_kg' must survive
+    const out = stripFinancials({ total_quantity: 200, weight_kg: 18.5 });
+    expect(out.total_quantity).toBe(200);
+    expect(out.weight_kg).toBe(18.5);
   });
 });

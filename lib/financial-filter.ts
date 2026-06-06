@@ -39,6 +39,9 @@ const FINANCIAL_PATTERNS = [
   "gross",
   "invoiced",
   "deduction",
+  "revenue",
+  "payable",
+  "payout",
 ];
 
 function isFinancialKey(key: string): boolean {
