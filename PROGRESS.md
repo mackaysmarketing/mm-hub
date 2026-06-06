@@ -1,5 +1,26 @@
 # MM-Hub — Progress Tracker
 
+> ## ⚠️ HISTORICAL — superseded by [HANDOFF.md](./HANDOFF.md)
+>
+> Phases 1–7 below describe the **pre-rebuild** state. The foundation has since
+> been replaced (see commits on `sprint-0-foundation`):
+>
+> - The two-axis access model (`farms` + `rcti_recipients`) replaced the
+>   single-axis `growers`-only model. `growers` is now a backward-compat view.
+> - The wide-open RLS in prod was replaced with real group + axis-scoped RLS
+>   (migrations 00005, 00007, 00009; helpers live in `private` schema).
+> - The broken NetSuite REST sync is **gated** behind `NETSUITE_SYNC_ENABLED`.
+>   RCTIs are served via on-demand PDF upload (`rcti_documents`, migration 00006)
+>   pending a verified raw-data export.
+> - `/api/remittances` and the `RemittanceDetail` component referenced below
+>   were **removed**. Use `/api/rcti-documents` and the new master/detail page.
+> - The Dashboard null-crash, switcher "All growers" label, sync-status
+>   `ended_at`, and admin `region` column bugs documented here are fixed.
+>
+> Read [HANDOFF.md](./HANDOFF.md) for the current architecture, what works
+> end-to-end, what's deferred, and the subtle traps recorded. Treat this file
+> as a historical record of the pre-rebuild phases.
+
 ## Phase 1: Foundation (COMPLETE)
 - [x] Next.js scaffold with App Router
 - [x] Supabase auth (Microsoft SSO + email/password)

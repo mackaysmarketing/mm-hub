@@ -18,8 +18,8 @@ import { createClient } from "@/lib/supabase/client";
 const ADMIN_LINKS = [
   {
     href: "/admin/growers",
-    label: "Grower Management",
-    description: "Add and manage grower records",
+    label: "Farm Management",
+    description: "Add and manage farm records (production-axis entities)",
     icon: Users,
     capability: "manage_users",
   },
