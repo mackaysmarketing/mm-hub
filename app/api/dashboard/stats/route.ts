@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getPortalAccessContext, getGrowerFilter } from "@/lib/portal-access";
+import { getPortalAccessContext, getGrowerFilter, hasMenuAccess } from "@/lib/portal-access";
 import { stripFinancials } from "@/lib/financial-filter";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,9 @@ export async function GET(request: Request) {
   const prevPeriodStart = new Date(periodStart.getTime() - days * 86400000);
 
   const accessCtx = await getPortalAccessContext();
+  if (!hasMenuAccess(accessCtx, "Dashboard")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const growerFilter = getGrowerFilter(accessCtx, growerId);
 
   const supabase = createClient();

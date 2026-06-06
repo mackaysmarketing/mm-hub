@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getPortalAccessContext, getGrowerFilter } from "@/lib/portal-access";
+import { getPortalAccessContext, getGrowerFilter, hasMenuAccess } from "@/lib/portal-access";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,9 @@ export async function GET(request: Request) {
   const growerId = searchParams.get("growerId");
 
   const accessCtx = await getPortalAccessContext();
+  if (!hasMenuAccess(accessCtx, "Dashboard")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const growerFilter = getGrowerFilter(accessCtx, growerId);
 
   const supabase = createClient();

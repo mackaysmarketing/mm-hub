@@ -8,6 +8,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: () => ({}) }));
 import {
   getGrowerFilter,
   getRecipientFilter,
+  hasMenuAccess,
   type PortalAccessContext,
 } from "./portal-access";
 
@@ -16,6 +17,7 @@ const ctx = (over: Partial<PortalAccessContext> = {}): PortalAccessContext => ({
   growerIds: [],
   recipientIds: [],
   isInternal: false,
+  allowedMenuItems: [],
   financialAccess: {},
   moduleRole: "grower",
   capabilities: [],
@@ -47,6 +49,22 @@ describe("getGrowerFilter — farm-axis scoping", () => {
     expect(getGrowerFilter(ctx({ isInternal: true, growerIds: null }), "any-farm")).toEqual([
       "any-farm",
     ]);
+  });
+});
+
+describe("hasMenuAccess — server-side menu-item enforcement (AC-5 fix)", () => {
+  it("internal users (allowedMenuItems null) can access any page", () => {
+    expect(hasMenuAccess(ctx({ allowedMenuItems: null }), "Remittances")).toBe(true);
+  });
+
+  it("grants a page in the caller's allowed list", () => {
+    expect(hasMenuAccess(ctx({ allowedMenuItems: ["Dashboard", "Sales & Pricing"] }), "Dashboard")).toBe(
+      true
+    );
+  });
+
+  it("DENIES a page the caller was not granted (no longer cosmetic)", () => {
+    expect(hasMenuAccess(ctx({ allowedMenuItems: ["Dashboard"] }), "Remittances")).toBe(false);
   });
 });
 

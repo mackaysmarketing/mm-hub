@@ -17,6 +17,7 @@ export interface PortalAccessContext {
   growerIds: string[] | null; // null = all (internal users only)
   recipientIds: string[] | null; // null = all (internal users only)
   isInternal: boolean; // Mackays-internal user — sees all tenants
+  allowedMenuItems: string[] | null; // null = all (internal users); else the granted menu items
   financialAccess: Record<string, boolean>;
   moduleRole: string;
   capabilities: string[];
@@ -27,6 +28,7 @@ const EMPTY_CONTEXT: PortalAccessContext = {
   growerIds: [],
   recipientIds: [],
   isInternal: false,
+  allowedMenuItems: [],
   financialAccess: {},
   moduleRole: "",
   capabilities: [],
@@ -62,6 +64,7 @@ export async function getPortalAccessContext(): Promise<PortalAccessContext> {
         growerIds: null,
         recipientIds: null,
         isInternal: true,
+        allowedMenuItems: null,
         financialAccess: {},
         moduleRole: "admin",
         capabilities: ["manage_users", "view_all_growers", "enter_qa", "trigger_sync"],
@@ -99,10 +102,28 @@ export async function getPortalAccessContext(): Promise<PortalAccessContext> {
     growerIds,
     recipientIds,
     isInternal,
+    allowedMenuItems: isInternal
+      ? null
+      : (config.allowed_menu_items as string[] | null) ?? [],
     financialAccess: (config.financial_access as Record<string, boolean>) || {},
     moduleRole,
     capabilities: (config.capabilities as string[]) || [],
   };
+}
+
+/**
+ * Menu-item (page) authorization — the second scoping dimension. Internal users
+ * (allowedMenuItems === null) may access everything; grower-side users may only
+ * access pages explicitly granted in their config. Routes call this to 403 a
+ * page the caller was not granted, so menu permissions are enforced server-side
+ * rather than merely hidden in the sidebar.
+ */
+export function hasMenuAccess(
+  context: PortalAccessContext,
+  menuItem: string
+): boolean {
+  if (context.allowedMenuItems === null) return true; // internal — all pages
+  return context.allowedMenuItems.includes(menuItem);
 }
 
 async function resolveGroupIds(

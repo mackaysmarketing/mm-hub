@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getPortalAccessContext, getGrowerFilter } from "@/lib/portal-access";
+import { getPortalAccessContext, getGrowerFilter, hasMenuAccess } from "@/lib/portal-access";
 import { stripFinancials } from "@/lib/financial-filter";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const accessCtx = await getPortalAccessContext();
+  if (!hasMenuAccess(accessCtx, "Remittances")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const growerFilter = getGrowerFilter(accessCtx);
 
   const supabase = createClient();
