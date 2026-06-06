@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload, FileText, Download } from "lucide-react";
+import { Upload, FileText, Download, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -49,6 +50,11 @@ export function RctiDocumentsSection({ groupId }: { groupId: string }) {
   const [rctiRef, setRctiRef] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
   const [totalInvoiced, setTotalInvoiced] = useState("");
+  const [editing, setEditing] = useState<RctiDoc | null>(null);
+  const [deleting, setDeleting] = useState<RctiDoc | null>(null);
+  const [editRef, setEditRef] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editTotal, setEditTotal] = useState("");
 
   const { data: recipients } = useQuery<RctiRecipient[]>({
     queryKey: ["hub-admin-rcti-recipients", groupId],
@@ -102,6 +108,54 @@ export function RctiDocumentsSection({ groupId }: { groupId: string }) {
       setTotalInvoiced("");
     },
   });
+
+  const updateDoc = useMutation({
+    mutationFn: async (doc: RctiDoc) => {
+      const totalNum = editTotal.trim() === "" ? null : Number(editTotal);
+      const res = await fetch(`/api/rcti-documents/${doc.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rcti_ref: editRef || null,
+          payment_date: editDate || null,
+          total_invoiced: totalNum,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Save failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hub-admin-rcti-documents", groupId] });
+      qc.invalidateQueries({ queryKey: ["rcti-documents"] });
+      setEditing(null);
+    },
+  });
+
+  const deleteDoc = useMutation({
+    mutationFn: async (doc: RctiDoc) => {
+      const res = await fetch(`/api/rcti-documents/${doc.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Delete failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hub-admin-rcti-documents", groupId] });
+      qc.invalidateQueries({ queryKey: ["rcti-documents"] });
+      setDeleting(null);
+    },
+  });
+
+  function openEdit(d: RctiDoc) {
+    setEditing(d);
+    setEditRef(d.rcti_ref ?? "");
+    setEditDate(d.payment_date ?? "");
+    setEditTotal(d.total_invoiced != null ? String(d.total_invoiced) : "");
+  }
 
   const noRecipients = (recipients ?? []).length === 0;
 
@@ -167,11 +221,34 @@ export function RctiDocumentsSection({ groupId }: { groupId: string }) {
                   </TableCell>
                   <TableCell className="text-xs text-bark">{fmtSize(d.file_size)}</TableCell>
                   <TableCell>
-                    <a href={`/api/rcti-documents/${d.id}/download`}>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <Download className="h-3.5 w-3.5 text-stone" />
+                    <div className="flex items-center gap-0.5">
+                      <a
+                        href={`/api/rcti-documents/${d.id}/download`}
+                        title="Download"
+                      >
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <Download className="h-3.5 w-3.5 text-stone" />
+                        </Button>
+                      </a>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Edit metadata"
+                        onClick={() => openEdit(d)}
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-stone" />
                       </Button>
-                    </a>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Delete"
+                        onClick={() => setDeleting(d)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-blaze/70" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -272,6 +349,108 @@ export function RctiDocumentsSection({ groupId }: { groupId: string }) {
             >
               <FileText className="h-4 w-4" />
               {upload.isPending ? "Uploading…" : "Upload"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit metadata */}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="bg-warmwhite">
+          <DialogHeader>
+            <DialogTitle className="text-soil">Edit RCTI metadata</DialogTitle>
+            <DialogDescription className="text-stone">
+              The PDF file itself is immutable — to replace it, delete and re-upload.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-bark">
+                  RCTI ref
+                </label>
+                <Input
+                  value={editRef}
+                  onChange={(e) => setEditRef(e.target.value)}
+                  className="border-sand bg-white"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-bark">
+                  Payment date
+                </label>
+                <Input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="border-sand bg-white"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-bark">
+                Total invoiced (AUD)
+              </label>
+              <Input
+                type="number"
+                step="0.01"
+                value={editTotal}
+                onChange={(e) => setEditTotal(e.target.value)}
+                className="border-sand bg-white"
+              />
+            </div>
+            {updateDoc.isError && (
+              <p className="text-xs text-blaze">{updateDoc.error?.message}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="bg-canopy text-white hover:bg-canopy/90"
+              disabled={updateDoc.isPending}
+              onClick={() => editing && updateDoc.mutate(editing)}
+            >
+              {updateDoc.isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm */}
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent className="bg-warmwhite">
+          <DialogHeader>
+            <DialogTitle className="text-blaze">Delete RCTI document?</DialogTitle>
+            <DialogDescription className="text-stone">
+              This removes the PDF and its metadata permanently. Growers will no longer see it.
+            </DialogDescription>
+          </DialogHeader>
+          {deleting && (
+            <div className="rounded-md bg-sand/30 p-3 text-xs text-bark">
+              <p className="font-mono">{deleting.rcti_ref || deleting.filename}</p>
+              {deleting.payment_date && (
+                <p className="mt-1 text-stone">Paid {deleting.payment_date}</p>
+              )}
+            </div>
+          )}
+          {deleteDoc.isError && (
+            <p className="text-xs text-blaze">{deleteDoc.error?.message}</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="bg-blaze text-white hover:bg-blaze/90"
+              disabled={deleteDoc.isPending}
+              onClick={() => deleting && deleteDoc.mutate(deleting)}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleteDoc.isPending ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
