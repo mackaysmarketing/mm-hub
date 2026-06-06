@@ -81,3 +81,57 @@ export async function PATCH(
   }
   return NextResponse.json(data);
 }
+
+/**
+ * DELETE /api/hub-admin/farms/[id] — refuses if synced fact rows (ft_*, qa_*,
+ * documents) reference the farm. Deactivating is the right move for an
+ * established farm; delete is for an accidental row that was never used.
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getUserSession();
+  if (!session || session.hubUser.hub_role !== "hub_admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const admin = createAdminClient();
+
+  const factTables = [
+    "ft_consignments",
+    "ft_orders",
+    "ft_pallets",
+    "ft_dispatch",
+    "ft_charges",
+    "ft_stock",
+    "qa_assessments",
+    "qa_audits",
+    "documents",
+  ] as const;
+
+  const counts = await Promise.all(
+    factTables.map((t) =>
+      admin.from(t).select("id", { count: "exact", head: true }).eq("grower_id", id)
+    )
+  );
+  const dependents = counts.reduce(
+    (s, r) => s + (r.count ?? 0),
+    0
+  );
+  if (dependents > 0) {
+    return NextResponse.json(
+      {
+        error: `Farm has ${dependents} associated record(s) (consignments / dispatch / QA / documents). Deactivate the farm instead.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  const { error } = await admin.from("growers").delete().eq("id", id);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ success: true });
+}

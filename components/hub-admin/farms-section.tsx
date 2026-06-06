@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -37,6 +38,24 @@ export function FarmsSection({ groupId }: { groupId: string }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Farm | null>(null);
+  const [deleting, setDeleting] = useState<Farm | null>(null);
+
+  const deleteFarm = useMutation({
+    mutationFn: async (farm: Farm) => {
+      const res = await fetch(`/api/hub-admin/farms/${farm.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Delete failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hub-admin-farms", groupId] });
+      setDeleting(null);
+    },
+  });
 
   const { data: farms, isLoading } = useQuery<Farm[]>({
     queryKey: ["hub-admin-farms", groupId],
@@ -127,14 +146,26 @@ export function FarmsSection({ groupId }: { groupId: string }) {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => setEditing(f)}
-                    >
-                      <Pencil className="h-3.5 w-3.5 text-stone" />
-                    </Button>
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Edit"
+                        onClick={() => setEditing(f)}
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-stone" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Delete"
+                        onClick={() => setDeleting(f)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-blaze/70" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -162,6 +193,46 @@ export function FarmsSection({ groupId }: { groupId: string }) {
           qc.invalidateQueries({ queryKey: ["hub-admin-farms", groupId] })
         }
       />
+
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent className="bg-warmwhite">
+          <DialogHeader>
+            <DialogTitle className="text-blaze">Delete farm?</DialogTitle>
+            <DialogDescription className="text-stone">
+              Refused automatically if any synced records (consignments / dispatch
+              / QA / documents) reference this farm. Deactivate instead to keep
+              the history.
+            </DialogDescription>
+          </DialogHeader>
+          {deleting && (
+            <div className="rounded-md bg-sand/30 p-3 text-xs text-bark">
+              <p className="font-medium">{deleting.name}</p>
+              {deleting.freshtrack_code && (
+                <p className="mt-1 font-mono text-stone">
+                  FreshTrack: {deleting.freshtrack_code}
+                </p>
+              )}
+            </div>
+          )}
+          {deleteFarm.isError && (
+            <p className="text-xs text-blaze">{deleteFarm.error?.message}</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="bg-blaze text-white hover:bg-blaze/90"
+              disabled={deleteFarm.isPending}
+              onClick={() => deleting && deleteFarm.mutate(deleting)}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleteFarm.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
