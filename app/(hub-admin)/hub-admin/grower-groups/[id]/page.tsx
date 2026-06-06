@@ -25,6 +25,8 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import { RctiRecipientsSection } from "@/components/hub-admin/rcti-recipients-section";
+import { RctiDocumentsSection } from "@/components/hub-admin/rcti-documents-section";
 
 interface GrowerRow {
   id: string;
@@ -328,6 +330,12 @@ export default function EditGrowerGroupPage() {
           </div>
         )}
       </div>
+
+      {/* RCTI Recipients */}
+      <RctiRecipientsSection groupId={params.id} />
+
+      {/* RCTI Documents */}
+      <RctiDocumentsSection groupId={params.id} />
 
       {/* Danger Zone */}
       {group.active && (

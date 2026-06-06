@@ -1,0 +1,382 @@
+===== PAGE 1 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+LMB - Cooroo Bananas
+GROWER REMITTANCE
+ABN:   |  13643925756
+Recipient Created Tax Invoice - 
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860  |  2620-LMBCO
+ 
+LMB - Cooroo Bananas 03/06/2026
+Date  |  Origin  |  Dest.  |  PO No.  |  Manifest  |  Description  |  QTY  |  Unit $  |  Net Amount
+5016063  |  3882397  |  04548646  |  BananaCavendishPremiumXL15kg Carton Semi Ripe  |  720  |  $39.23  |  $28,245.60
+G5020049 - 
+16/05/2026
+112
+5016273  |  3882398  |  04548646  |  BananaCavendishPremiumXL15kg CartonRipe  |  480  |  $39.23  |  $18,830.40
+G5020052 - 
+17/05/2026  |  5016376  |  3882399  |  04549441  |  BananaCavendishPremiumXL15kg CartonRipe  |  1200  |  $39.23  |  $47,076.00
+115
+G5020058 - 
+18/05/2026  |  5016385  |  3882400  |  04551921  |  BananaCavendishPremiumXL15kg CartonRipe  |  1200  |  $39.23  |  $47,076.00
+121
+5016463  |  3883748  |  04555138  |  BananaCavendishPremiumXL15kg Carton Semi Ripe  |  480  |  $39.23  |  $18,830.40
+G5020077 - 
+140
+5016503  |  3883749  |  04555138  |  BananaCavendishPremiumXL15kg CartonRipe  |  720  |  $41.54  |  $29,908.80
+5016464  |  3883748  |  04551939  |  BananaCavendishPremiumXL15kg CartonRipe  |  728  |  $39.23  |  $28,559.44
+G5020063 - 
+126
+5016502  |  3883749  |  04551939  |  BananaCavendishPremiumXL15kg CartonRipe  |  472  |  $41.54  |  $19,606.88
+21/05/2026
+5016760  |  04555136  |  04555136  |  BananaCavendishPremiumXL15kg CartonRipe  |  1  |  $39.23  |  $39.23
+G5020071 - 
+134
+5016432  |  3883747  |  04555136  |  BananaCavendishPremiumXL15kg CartonRipe  |  1199  |  $39.23  |  $47,036.77
+5016504  |  3883749  |  04555137  |  BananaCavendishPremiumXL15kg CartonRipe  |  80  |  $41.54  |  $3,323.20
+G5020076 - 
+139
+5016570  |  3883750  |  04555137  |  BananaCavendishPremiumXL15kg CartonRipe  |  1120  |  $41.54  |  $46,524.80
+21/05/2026  |  G5020079 -   |  5016501  |  3883749  |  04555722  |  BananaCavendishPremiumXL15kg CartonRipe  |  1200  |  $41.54  |  $49,848.00
+142
+Total  |  9600  |  $384,905.52
+Charges  |  Ex Gst  |  Gst  |  Total Amount
+Retail Rebate  |  $0.98  |  $0.00  |  $0.98
+Retail Rebate   |  $9,621.66  |  $0.00  |  $9,621.66
+MM Commission - Retail  |  $1.72  |  $0.17  |  $1.89
+MM Commission - Retail   |  $16,886.02  |  $1,688.60  |  $18,574.62
+Levy Crop Compulsory   |  $3,153.60  |  $0.00  |  $3,153.60
+Levy Panama Voluntary   |  $1,823.04  |  $182.30  |  $2,005.34
+Freight  |  $2,523.10  |  $252.32  |  $2,775.42
+Ripening   |  $21,600.00  |  $2,160.00  |  $23,760.00
+Labelling   |  $122.40  |  $12.24  |  $134.64
+Total Deductions  |  $55,732.52  |  $4,295.63  |  $60,028.15
+Total Invoiced  |  $324,877.37
+Page 1 of 9
+
+===== PAGE 2 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+Mackays Marketing  |  GROWER REMITTANCE-DETAILS
+LMB - Cooroo Bananas
+RCTI REF No: 2620-LMBCO
+ABN: 13643925756
+RCTI/Payment Date 03/06/2026
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860
+ 
+Origin Load  |  Customer Reference  |  Consignee Code  |  Dispatch Date
+G5020076 - 139  |  04555137  |  MMTRU  |  14/05/2026
+Date  |  Description  |  Destination  |  Product  |  QTY  |  Price  |  Total Amount
+21/05/2026  |  Coles Melbourne- 
+5016504  |  BananaCavendishPremiumXL15kg CartonRipe  |  80  |  $41.54  |  $3,323.20
+3883749- 28/05
+Coles Melbourne- 
+5016570  |  BananaCavendishPremiumXL15kg CartonRipe  |  1120  |  $41.54  |  $46,524.80
+3883750- 29/05
+Total  |  1200  |  $49,848.00
+Charges Details  |  Total No GST  |  GST  |  Total Amount 
+Retail Rebate   |  $1246.20  |  $0.00  |  $1,246.20
+MM Commission - Retail   |  $2187.09  |  $218.71  |  $2,405.80
+Levy Crop Compulsory   |  $394.20  |  $0.00  |  $394.20
+Levy Panama Voluntary   |  $227.88  |  $22.79  |  $250.67
+Freight  |  $321.98  |  $32.20  |  $354.18
+Ripening   |  $2700.00  |  $270.00  |  $2,970.00
+Total  |  $7077.35  |  $543.70  |  $7,621.05
+Total Invoiced  |  $42,226.95
+Page 2 of 9
+
+===== PAGE 3 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+Mackays Marketing  |  GROWER REMITTANCE-DETAILS
+LMB - Cooroo Bananas
+RCTI REF No: 2620-LMBCO
+ABN: 13643925756
+RCTI/Payment Date 03/06/2026
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860
+ 
+Origin Load  |  Customer Reference  |  Consignee Code  |  Dispatch Date
+G5020071 - 134  |  04555136  |  MMTRU  |  14/05/2026
+Date  |  Description  |  Destination  |  Product  |  QTY  |  Price  |  Total Amount
+20/05/2026  |  Mackays Marketing - 
+5016760  |  Sales Rep- 04555136-   |  BananaCavendishPremiumXL15kg CartonRipe  |  1  |  $39.23  |  $39.23
+20/05
+Coles Melbourne- 
+5016432  |  BananaCavendishPremiumXL15kg CartonRipe  |  1199  |  $39.23  |  $47,036.77
+3883747- 26/05
+Total  |  1200  |  $47,076.00
+Charges Details  |  Total No GST  |  GST  |  Total Amount 
+Retail Rebate  |  $0.98  |  $0.00  |  $0.98
+Retail Rebate   |  $1175.92  |  $0.00  |  $1,175.92
+MM Commission - Retail  |  $1.72  |  $0.17  |  $1.89
+MM Commission - Retail   |  $2063.74  |  $206.37  |  $2,270.11
+Levy Crop Compulsory   |  $394.20  |  $0.00  |  $394.20
+Levy Panama Voluntary   |  $227.88  |  $22.79  |  $250.67
+Freight  |  $312.41  |  $31.24  |  $343.65
+Ripening   |  $2700.00  |  $270.01  |  $2,970.01
+Total  |  $6876.85  |  $530.58  |  $7,407.43
+Total Invoiced  |  $39,668.57
+Page 3 of 9
+
+===== PAGE 4 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+Mackays Marketing  |  GROWER REMITTANCE-DETAILS
+LMB - Cooroo Bananas
+RCTI REF No: 2620-LMBCO
+ABN: 13643925756
+RCTI/Payment Date 03/06/2026
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860
+ 
+Origin Load  |  Customer Reference  |  Consignee Code  |  Dispatch Date
+G5020049 - 112  |  04548646  |  MMTRU  |  11/05/2026
+Date  |  Description  |  Destination  |  Product  |  QTY  |  Price  |  Total Amount
+16/05/2026  |  Coles Melbourne- 
+5016063  |  BananaCavendishPremiumXL15kg Carton Semi Ripe  |  720  |  $39.23  |  $28,245.60
+3882397- 21/05
+Coles Melbourne- 
+5016273  |  BananaCavendishPremiumXL15kg CartonRipe  |  480  |  $39.23  |  $18,830.40
+3882398- 22/05
+Total
+1200  |  $47,076.00
+Charges Details  |  Total No GST  |  GST  |  Total Amount 
+Retail Rebate   |  $1176.90  |  $0.00  |  $1,176.90
+MM Commission - Retail   |  $2065.46  |  $206.55  |  $2,272.01
+Levy Crop Compulsory   |  $394.20  |  $0.00  |  $394.20
+Levy Panama Voluntary   |  $227.88  |  $22.79  |  $250.67
+Freight  |  $312.42  |  $31.25  |  $343.67
+Ripening   |  $2700.00  |  $270.00  |  $2,970.00
+Labelling   |  $73.44  |  $7.34  |  $80.78
+Total  |  $6950.30  |  $537.93  |  $7,488.23
+Total Invoiced  |  $39,587.77
+Page 4 of 9
+
+===== PAGE 5 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+Mackays Marketing  |  GROWER REMITTANCE-DETAILS
+LMB - Cooroo Bananas
+RCTI REF No: 2620-LMBCO
+ABN: 13643925756
+RCTI/Payment Date 03/06/2026
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860
+ 
+Origin Load  |  Customer Reference  |  Consignee Code  |  Dispatch Date
+G5020063 - 126  |  04551939  |  MMTRU  |  14/05/2026
+Date  |  Description  |  Destination  |  Product  |  QTY  |  Price  |  Total Amount
+19/05/2026  |  Coles Melbourne- 
+5016464  |  BananaCavendishPremiumXL15kg CartonRipe  |  728  |  $39.23  |  $28,559.44
+3883748- 27/05
+Coles Melbourne- 
+5016502  |  BananaCavendishPremiumXL15kg CartonRipe  |  472  |  $41.54  |  $19,606.88
+3883749- 28/05
+Total
+1200  |  $48,166.32
+Charges Details  |  Total No GST  |  GST  |  Total Amount 
+Retail Rebate   |  $1204.16  |  $0.00  |  $1,204.16
+MM Commission - Retail   |  $2113.30  |  $211.34  |  $2,324.64
+Levy Crop Compulsory   |  $394.20  |  $0.00  |  $394.20
+Levy Panama Voluntary   |  $227.88  |  $22.79  |  $250.67
+Freight  |  $326.64  |  $32.67  |  $359.31
+Ripening   |  $2700.00  |  $270.00  |  $2,970.00
+Total  |  $6966.18  |  $536.80  |  $7,502.98
+Total Invoiced  |  $40,663.34
+Page 5 of 9
+
+===== PAGE 6 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+Mackays Marketing  |  GROWER REMITTANCE-DETAILS
+LMB - Cooroo Bananas
+RCTI REF No: 2620-LMBCO
+ABN: 13643925756
+RCTI/Payment Date 03/06/2026
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860
+ 
+Origin Load  |  Customer Reference  |  Consignee Code  |  Dispatch Date
+G5020077 - 140  |  04555138  |  MMTRU  |  14/05/2026
+Date  |  Description  |  Destination  |  Product  |  QTY  |  Price  |  Total Amount
+21/05/2026  |  Coles Melbourne- 
+5016463  |  BananaCavendishPremiumXL15kg Carton Semi Ripe  |  480  |  $39.23  |  $18,830.40
+3883748- 27/05
+Coles Melbourne- 
+5016503  |  BananaCavendishPremiumXL15kg CartonRipe  |  720  |  $41.54  |  $29,908.80
+3883749- 28/05
+Total
+1200  |  $48,739.20
+Charges Details  |  Total No GST  |  GST  |  Total Amount 
+Retail Rebate   |  $1218.48  |  $0.00  |  $1,218.48
+MM Commission - Retail   |  $2138.43  |  $213.85  |  $2,352.28
+Levy Crop Compulsory   |  $394.20  |  $0.00  |  $394.20
+Levy Panama Voluntary   |  $227.88  |  $22.79  |  $250.67
+Freight  |  $312.42  |  $31.25  |  $343.67
+Ripening   |  $2700.00  |  $270.00  |  $2,970.00
+Labelling   |  $48.96  |  $4.90  |  $53.86
+Total  |  $7040.37  |  $542.79  |  $7,583.16
+Total Invoiced  |  $41,156.04
+Page 6 of 9
+
+===== PAGE 7 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+Mackays Marketing  |  GROWER REMITTANCE-DETAILS
+LMB - Cooroo Bananas
+RCTI REF No: 2620-LMBCO
+ABN: 13643925756
+RCTI/Payment Date 03/06/2026
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860
+ 
+Origin Load  |  Customer Reference  |  Consignee Code  |  Dispatch Date
+G5020058 - 121  |  04551921  |  MMTRU  |  13/05/2026
+Date  |  Description  |  Destination  |  Product  |  QTY  |  Price  |  Total Amount
+18/05/2026  |  Coles Melbourne- 
+5016385  |  BananaCavendishPremiumXL15kg CartonRipe  |  1200  |  $39.23  |  $47,076.00
+3882400- 24/05
+Total  |  1200  |  $47,076.00
+Charges Details  |  Total No GST  |  GST  |  Total Amount 
+Retail Rebate   |  $1176.90  |  $0.00  |  $1,176.90
+MM Commission - Retail   |  $2065.46  |  $206.55  |  $2,272.01
+Levy Crop Compulsory   |  $394.20  |  $0.00  |  $394.20
+Levy Panama Voluntary   |  $227.88  |  $22.79  |  $250.67
+Freight  |  $312.41  |  $31.24  |  $343.65
+Ripening   |  $2700.00  |  $270.00  |  $2,970.00
+Total  |  $6876.85  |  $530.58  |  $7,407.43
+Total Invoiced  |  $39,668.57
+Page 7 of 9
+
+===== PAGE 8 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+Mackays Marketing  |  GROWER REMITTANCE-DETAILS
+LMB - Cooroo Bananas
+RCTI REF No: 2620-LMBCO
+ABN: 13643925756
+RCTI/Payment Date 03/06/2026
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860
+ 
+Origin Load  |  Customer Reference  |  Consignee Code  |  Dispatch Date
+G5020052 - 115  |  04549441  |  MMTRU  |  12/05/2026
+Date  |  Description  |  Destination  |  Product  |  QTY  |  Price  |  Total Amount
+17/05/2026  |  Coles Melbourne- 
+5016376  |  BananaCavendishPremiumXL15kg CartonRipe  |  1200  |  $39.23  |  $47,076.00
+3882399- 23/05
+Total  |  1200  |  $47,076.00
+Charges Details  |  Total No GST  |  GST  |  Total Amount 
+Retail Rebate   |  $1176.90  |  $0.00  |  $1,176.90
+MM Commission - Retail   |  $2065.46  |  $206.55  |  $2,272.01
+Levy Crop Compulsory   |  $394.20  |  $0.00  |  $394.20
+Levy Panama Voluntary   |  $227.88  |  $22.79  |  $250.67
+Freight  |  $312.41  |  $31.24  |  $343.65
+Ripening   |  $2700.00  |  $270.00  |  $2,970.00
+Total  |  $6876.85  |  $530.58  |  $7,407.43
+Total Invoiced  |  $39,668.57
+Page 8 of 9
+
+===== PAGE 9 =====
+Tully Administration
+PO BOX 220, TULLY QLD 4854
+Ph: (07) 4088 7828
+Fx: (07) 4088 7855
+accounts@mackaysmarketing.com.au
+A.B.N. 36-841-089-158
+Mackay's Banana Marketing Co Pty Ltd
+ACO Cert No. 12707
+in Trust for Mackay's Banana Marketing Co (as general partner of 
+Mackay's Banana Marketing Partnership)
+Mackays Marketing  |  GROWER REMITTANCE-DETAILS
+LMB - Cooroo Bananas
+RCTI REF No: 2620-LMBCO
+ABN: 13643925756
+RCTI/Payment Date 03/06/2026
+629 Cooroo Lands Road
+Cooroo Lands QLD 4860
+ 
+Origin Load  |  Customer Reference  |  Consignee Code  |  Dispatch Date
+G5020079 - 142  |  04555722  |  MMTRU  |  15/05/2026
+Date  |  Description  |  Destination  |  Product  |  QTY  |  Price  |  Total Amount
+21/05/2026  |  Coles Melbourne- 
+5016501  |  BananaCavendishPremiumXL15kg CartonRipe  |  1200  |  $41.54  |  $49,848.00
+3883749- 28/05
+Total  |  1200  |  $49,848.00
+Charges Details  |  Total No GST  |  GST  |  Total Amount 
+Retail Rebate   |  $1246.20  |  $0.00  |  $1,246.20
+MM Commission - Retail   |  $2187.08  |  $218.71  |  $2,405.79
+Levy Crop Compulsory   |  $394.20  |  $0.00  |  $394.20
+Levy Panama Voluntary   |  $227.88  |  $22.79  |  $250.67
+Freight  |  $312.41  |  $31.24  |  $343.65
+Ripening   |  $2700.00  |  $270.00  |  $2,970.00
+Total  |  $7067.77  |  $542.74  |  $7,610.51
+Total Invoiced  |  $42,237.49
+Page 9 of 9
