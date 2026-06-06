@@ -63,6 +63,12 @@ interface Grower {
   grower_group_id: string | null;
 }
 
+interface Recipient {
+  id: string;
+  name: string;
+  grower_group_id: string;
+}
+
 export default function EditUserPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -90,6 +96,11 @@ export default function EditUserPage() {
   const { data: growers } = useQuery<Grower[]>({
     queryKey: ["hub-admin-growers"],
     queryFn: () => fetch("/api/hub-admin/growers").then((r) => r.json()),
+  });
+
+  const { data: recipients } = useQuery<Recipient[]>({
+    queryKey: ["hub-admin-rcti-recipients-all"],
+    queryFn: () => fetch("/api/hub-admin/rcti-recipients").then((r) => r.json()),
   });
 
   // Sync form state when user loads
@@ -382,6 +393,7 @@ export default function EditUserPage() {
                 mod={mod}
                 growerGroups={growerGroups ?? []}
                 growers={growers ?? []}
+                recipients={recipients ?? []}
                 onUpdateRole={(role) =>
                   updateModuleMutation.mutate({
                     moduleId: mod.module_id,
@@ -507,6 +519,7 @@ function ModuleCard({
   mod,
   growerGroups,
   growers,
+  recipients,
   onUpdateRole,
   onUpdateConfig,
   onRemove,
@@ -514,6 +527,7 @@ function ModuleCard({
   mod: ModuleAccessRow;
   growerGroups: GrowerGroup[];
   growers: Grower[];
+  recipients: Recipient[];
   onUpdateRole: (role: string) => void;
   onUpdateConfig: (config: Record<string, unknown>) => void;
   onRemove: () => void;
@@ -529,10 +543,16 @@ function ModuleCard({
   const capabilities = (mod.config.capabilities as string[]) ?? [];
   const growerGroupId = (mod.config.grower_group_id as string) ?? "";
   const growerIds = (mod.config.grower_ids as string[] | null) ?? null;
+  const recipientIds = (mod.config.recipient_ids as string[] | null) ?? null;
+  const financialAccess =
+    (mod.config.financial_access as Record<string, boolean> | undefined) ?? {};
 
-  // Growers for the selected grower_group
+  // Group-scoped lists for the two access axes
   const groupGrowers = growerGroupId
     ? growers.filter((g) => g.grower_group_id === growerGroupId)
+    : [];
+  const groupRecipients = growerGroupId
+    ? recipients.filter((r) => r.grower_group_id === growerGroupId)
     : [];
 
   // All possible capabilities from all roles (for display)
@@ -571,7 +591,8 @@ function ModuleCard({
     onUpdateConfig({
       ...mod.config,
       grower_group_id: newGroupId || null,
-      grower_ids: null, // Reset grower_ids when group changes
+      grower_ids: null,     // reset both axes when the group changes
+      recipient_ids: null,
     });
   }
 
@@ -583,6 +604,27 @@ function ModuleCard({
     onUpdateConfig({
       ...mod.config,
       grower_ids: updated.length === 0 ? null : updated,
+    });
+  }
+
+  function toggleRecipientAccess(recipientId: string) {
+    const currentIds = recipientIds ?? [];
+    const updated = currentIds.includes(recipientId)
+      ? currentIds.filter((id) => id !== recipientId)
+      : [...currentIds, recipientId];
+    onUpdateConfig({
+      ...mod.config,
+      recipient_ids: updated.length === 0 ? null : updated,
+    });
+  }
+
+  function toggleFinancialAccess(menuItem: string) {
+    onUpdateConfig({
+      ...mod.config,
+      financial_access: {
+        ...financialAccess,
+        [menuItem]: !financialAccess[menuItem],
+      },
     });
   }
 
@@ -653,11 +695,11 @@ function ModuleCard({
             </p>
           )}
 
-          {/* Grower checkboxes for grower role (not grower_admin) */}
+          {/* Farm access (production axis) — grower role only */}
           {mod.module_role === "grower" && growerGroupId && groupGrowers.length > 0 && (
             <div className="mt-3">
               <label className="mb-1.5 block text-xs font-medium text-bark">
-                Grower Access
+                Farm Access <span className="text-stone">(production axis)</span>
               </label>
               <label className="mb-2 flex items-center gap-2 text-xs text-bark">
                 <input
@@ -671,7 +713,7 @@ function ModuleCard({
                   }}
                   className="h-3.5 w-3.5 rounded border-sand text-forest"
                 />
-                All growers in group
+                All farms in group
               </label>
               {growerIds !== null && (
                 <div className="ml-4 space-y-1">
@@ -687,6 +729,47 @@ function ModuleCard({
                         className="h-3.5 w-3.5 rounded border-sand text-forest"
                       />
                       {g.name} {g.code ? `(${g.code})` : ""}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* RCTI Recipient access (financial axis) — grower role only */}
+          {mod.module_role === "grower" && growerGroupId && groupRecipients.length > 0 && (
+            <div className="mt-3">
+              <label className="mb-1.5 block text-xs font-medium text-bark">
+                Recipient Access <span className="text-stone">(financial axis)</span>
+              </label>
+              <label className="mb-2 flex items-center gap-2 text-xs text-bark">
+                <input
+                  type="checkbox"
+                  checked={recipientIds === null}
+                  onChange={() => {
+                    onUpdateConfig({
+                      ...mod.config,
+                      recipient_ids: recipientIds === null ? [] : null,
+                    });
+                  }}
+                  className="h-3.5 w-3.5 rounded border-sand text-forest"
+                />
+                All recipients in group
+              </label>
+              {recipientIds !== null && (
+                <div className="ml-4 space-y-1">
+                  {groupRecipients.map((r) => (
+                    <label
+                      key={r.id}
+                      className="flex items-center gap-2 text-xs text-bark"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={recipientIds.includes(r.id)}
+                        onChange={() => toggleRecipientAccess(r.id)}
+                        className="h-3.5 w-3.5 rounded border-sand text-forest"
+                      />
+                      {r.name}
                     </label>
                   ))}
                 </div>
@@ -715,6 +798,34 @@ function ModuleCard({
                   className="h-3.5 w-3.5 rounded border-sand text-forest focus:ring-forest"
                 />
                 {item.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Financial access — per-menu-item toggle for money visibility */}
+      {mod.module_id === "grower-portal" && allowedMenuItems.length > 0 && (
+        <div className="mt-3">
+          <label className="mb-1.5 block text-xs font-medium text-bark">
+            Financial Access{" "}
+            <span className="text-stone">
+              (show monetary fields on each page)
+            </span>
+          </label>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {allowedMenuItems.map((item) => (
+              <label
+                key={item}
+                className="flex items-center gap-1.5 text-xs text-bark"
+              >
+                <input
+                  type="checkbox"
+                  checked={financialAccess[item] === true}
+                  onChange={() => toggleFinancialAccess(item)}
+                  className="h-3.5 w-3.5 rounded border-sand text-forest focus:ring-forest"
+                />
+                {item}
               </label>
             ))}
           </div>
