@@ -15,14 +15,14 @@ export async function GET() {
 
   const { data } = await supabase
     .from("sync_logs")
-    .select("ended_at")
+    .select("completed_at")
     .eq("status", "success")
     .eq("source", "freshtrack")
-    .order("ended_at", { ascending: false })
+    .order("completed_at", { ascending: false })
     .limit(1)
     .single();
 
   return NextResponse.json({
-    lastSync: data?.ended_at ?? null,
+    lastSync: data?.completed_at ?? null,
   });
 }

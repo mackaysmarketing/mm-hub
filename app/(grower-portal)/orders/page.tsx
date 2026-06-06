@@ -9,6 +9,7 @@ import { TopBar } from "@/components/top-bar";
 import { TimeRangeSelector } from "@/components/time-range-selector";
 import { usePortalData } from "@/components/portal-shell";
 import { safeFetch } from "@/lib/portal-constants";
+import { PanelError } from "@/components/panel-error";
 import {
   Table,
   TableHeader,
@@ -76,7 +77,7 @@ export default function OrdersPage() {
 
   const queryParams = buildParams();
 
-  const { data: orders, isLoading } = useQuery<OrderRow[]>({
+  const { data: orders, isLoading, error } = useQuery<OrderRow[]>({
     queryKey: ["orders", queryParams],
     queryFn: () => safeFetch<OrderRow[]>(`/api/orders?${queryParams}`),
   });
@@ -122,6 +123,8 @@ export default function OrdersPage() {
             <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load orders — try refreshing" />
       ) : (orders ?? []).length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-sand bg-warmwhite py-16 text-stone">
           <ClipboardList className="mb-2 h-8 w-8" />

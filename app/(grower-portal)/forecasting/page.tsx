@@ -25,6 +25,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { PRODUCE_TYPES, safeFetch } from "@/lib/portal-constants";
+import { PanelError } from "@/components/panel-error";
 
 interface ForecastData {
   historicalWeeks: {
@@ -82,7 +83,7 @@ export default function ForecastingPage() {
 
   const queryParams = buildParams();
 
-  const { data, isLoading } = useQuery<ForecastData>({
+  const { data, isLoading, error } = useQuery<ForecastData>({
     queryKey: ["forecasting", queryParams],
     queryFn: () => safeFetch<ForecastData>(`/api/forecasting?${queryParams}`),
   });
@@ -114,6 +115,8 @@ export default function ForecastingPage() {
           </div>
           <Skeleton className="h-[350px] rounded-xl" />
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load forecasting data — try refreshing" />
       ) : (
         <>
           {/* KPI cards */}

@@ -12,6 +12,7 @@ import {
 
 import { TopBar } from "@/components/top-bar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PanelError } from "@/components/panel-error";
 
 
 interface CategoryScore {
@@ -178,10 +179,13 @@ export default function QAPage() {
   // Grower scoping is handled server-side
   const queryParams = "";
 
-  const { data, isLoading } = useQuery<QAOverviewResponse>({
+  const { data, isLoading, error } = useQuery<QAOverviewResponse>({
     queryKey: ["qa-overview", queryParams],
     queryFn: () =>
-      fetch(`/api/qa/overview?${queryParams}`).then((r) => r.json()),
+      fetch(`/api/qa/overview?${queryParams}`).then((r) => {
+        if (!r.ok) throw new Error(`Request failed: ${r.status}`);
+        return r.json();
+      }),
   });
 
   const assessment = data?.assessment ?? null;
@@ -202,6 +206,8 @@ export default function QAPage() {
           <Skeleton className="h-[200px] rounded-xl" />
           <Skeleton className="h-[200px] rounded-xl" />
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load QA data — try refreshing" />
       ) : !assessment ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-sand bg-warmwhite py-16 text-center">
           <ShieldCheck className="mb-3 h-10 w-10 text-stone/50" />

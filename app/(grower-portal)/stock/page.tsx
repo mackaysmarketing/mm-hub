@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TopBar } from "@/components/top-bar";
 import { usePortalData } from "@/components/portal-shell";
 import { safeFetch } from "@/lib/portal-constants";
+import { PanelError } from "@/components/panel-error";
 import {
   Table,
   TableHeader,
@@ -63,7 +64,7 @@ export default function StockPage() {
 
   const queryParams = buildParams();
 
-  const { data: stock, isLoading } = useQuery<StockRow[]>({
+  const { data: stock, isLoading, error } = useQuery<StockRow[]>({
     queryKey: ["stock", queryParams],
     queryFn: () => safeFetch<StockRow[]>(`/api/stock?${queryParams}`),
   });
@@ -116,6 +117,8 @@ export default function StockPage() {
             <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load stock — try refreshing" />
       ) : rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-sand bg-warmwhite py-16 text-stone">
           <Warehouse className="mb-2 h-8 w-8" />

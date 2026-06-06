@@ -32,15 +32,19 @@ import {
   PRODUCE_TYPES,
   BAR_COLORS,
   formatCurrency,
+  formatCurrencyPrecise,
   formatWeight,
   safeFetch,
 } from "@/lib/portal-constants";
+import { PanelError } from "@/components/panel-error";
 
+// API may null monetary fields when the caller lacks financial_access — handle
+// the null case at the render boundary so the page never throws on .toFixed().
 interface StatsResponse {
-  grossSales: { value: number; change: number };
-  avgPrice: { value: number; change: number };
-  priceRange: { value: string; change: number };
-  totalVolume: { value: number; change: number };
+  grossSales: { value: number | null; change: number };
+  avgPrice: { value: number | null; change: number };
+  priceRange: { value: string | null; change: number };
+  totalVolume: { value: number | null; change: number };
 }
 
 interface VolumeWeek {
@@ -86,24 +90,28 @@ export default function DashboardPage() {
     queryFn: () => safeFetch<StatsResponse>(`/api/dashboard/stats?${queryParams}`),
   });
 
-  const { data: volumeData, isLoading: volumeLoading } = useQuery<VolumeWeek[]>({
-    queryKey: ["dashboard-volume", queryParams],
-    queryFn: () => safeFetch<VolumeWeek[]>(`/api/dashboard/volume?${queryParams}`),
-  });
+  const { data: volumeData, isLoading: volumeLoading, error: volumeError } =
+    useQuery<VolumeWeek[]>({
+      queryKey: ["dashboard-volume", queryParams],
+      queryFn: () => safeFetch<VolumeWeek[]>(`/api/dashboard/volume?${queryParams}`),
+    });
 
-  const { data: customerMix, isLoading: mixLoading } = useQuery<CustomerMixEntry[]>({
-    queryKey: ["dashboard-customer-mix", queryParams],
-    queryFn: () => safeFetch<CustomerMixEntry[]>(`/api/dashboard/customer-mix?${queryParams}`),
-  });
+  const { data: customerMix, isLoading: mixLoading, error: mixError } =
+    useQuery<CustomerMixEntry[]>({
+      queryKey: ["dashboard-customer-mix", queryParams],
+      queryFn: () =>
+        safeFetch<CustomerMixEntry[]>(`/api/dashboard/customer-mix?${queryParams}`),
+    });
 
-  const { data: recentOrders, isLoading: ordersLoading } = useQuery<OrderEntry[]>({
-    queryKey: ["dashboard-recent-orders", queryParams],
-    queryFn: () => {
-      const p = new URLSearchParams();
-      if (selectedGrowerId) p.set("growerId", selectedGrowerId);
-      return safeFetch<OrderEntry[]>(`/api/dashboard/recent-orders?${p}`);
-    },
-  });
+  const { data: recentOrders, isLoading: ordersLoading, error: ordersError } =
+    useQuery<OrderEntry[]>({
+      queryKey: ["dashboard-recent-orders", queryParams],
+      queryFn: () => {
+        const p = new URLSearchParams();
+        if (selectedGrowerId) p.set("growerId", selectedGrowerId);
+        return safeFetch<OrderEntry[]>(`/api/dashboard/recent-orders?${p}`);
+      },
+    });
 
   // Build stacked bar chart data: flatten weeks into rows with customer columns
   const allCustomers = new Set<string>();
@@ -159,14 +167,14 @@ export default function DashboardPage() {
           />
           <StatCard
             title="Avg Price/KG"
-            value={`$${stats.avgPrice.value.toFixed(2)}`}
+            value={formatCurrencyPrecise(stats.avgPrice.value)}
             change={stats.avgPrice.change}
             icon={<TrendingUp className="h-5 w-5" />}
             color="text-canopy"
           />
           <StatCard
             title="Price Range"
-            value={stats.priceRange.value}
+            value={stats.priceRange.value ?? "—"}
             change={stats.priceRange.change}
             icon={<ArrowLeftRight className="h-5 w-5" />}
             color="text-harvest"
@@ -190,6 +198,8 @@ export default function DashboardPage() {
           </h2>
           {volumeLoading ? (
             <Skeleton className="h-[300px]" />
+          ) : volumeError ? (
+            <PanelError label="Failed to load volume data" />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={barChartData}>
@@ -230,6 +240,8 @@ export default function DashboardPage() {
           </h2>
           {mixLoading ? (
             <Skeleton className="mx-auto h-[250px] w-[250px] rounded-full" />
+          ) : mixError ? (
+            <PanelError label="Failed to load customer mix" />
           ) : (
             <>
               <ResponsiveContainer width="100%" height={220}>
@@ -295,6 +307,8 @@ export default function DashboardPage() {
               <Skeleton key={i} className="h-10" />
             ))}
           </div>
+        ) : ordersError ? (
+          <PanelError label="Failed to load recent orders" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">

@@ -25,6 +25,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { PanelError } from "@/components/panel-error";
 
 
 const CATEGORIES = [
@@ -88,10 +89,13 @@ export default function DocumentsPage() {
 
   const queryParams = buildParams();
 
-  const { data: documents, isLoading } = useQuery<DocumentRecord[]>({
+  const { data: documents, isLoading, error } = useQuery<DocumentRecord[]>({
     queryKey: ["documents", queryParams],
     queryFn: () =>
-      fetch(`/api/documents?${queryParams}`).then((r) => r.json()),
+      fetch(`/api/documents?${queryParams}`).then((r) => {
+        if (!r.ok) throw new Error(`Request failed: ${r.status}`);
+        return r.json();
+      }),
   });
 
   const uploadMutation = useMutation({
@@ -190,6 +194,8 @@ export default function DocumentsPage() {
             <Skeleton key={i} className="h-[100px] rounded-xl" />
           ))}
         </div>
+      ) : error ? (
+        <PanelError label="Failed to load documents — try refreshing" />
       ) : (documents ?? []).length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-sand bg-warmwhite py-16 text-center">
           <FileText className="mb-3 h-10 w-10 text-stone/50" />

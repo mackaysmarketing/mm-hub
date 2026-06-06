@@ -29,6 +29,7 @@ import {
   formatNumber as fmtNumber,
   safeFetch,
 } from "@/lib/portal-constants";
+import { PanelError } from "@/components/panel-error";
 
 function fmtWeight(v: number): string {
   return `${v.toLocaleString("en-AU")} kg`;
@@ -84,7 +85,7 @@ export default function SalesPage() {
 
   const queryParams = buildParams();
 
-  const { data: breakdown, isLoading: breakdownLoading } = useQuery<WeekBreakdown[]>({
+  const { data: breakdown, isLoading: breakdownLoading, error: breakdownError } = useQuery<WeekBreakdown[]>({
     queryKey: ["sales-breakdown", queryParams],
     queryFn: () => safeFetch<WeekBreakdown[]>(`/api/sales/weekly-breakdown?${queryParams}`),
   });
@@ -99,7 +100,7 @@ export default function SalesPage() {
     }
   }
 
-  const { data: landscape, isLoading: landscapeLoading } = useQuery<PriceLandscapeResponse>({
+  const { data: landscape, isLoading: landscapeLoading, error: landscapeError } = useQuery<PriceLandscapeResponse>({
     queryKey: ["sales-landscape", queryParams],
     queryFn: () => safeFetch<PriceLandscapeResponse>(`/api/sales/price-landscape?${queryParams}`),
   });
@@ -148,6 +149,8 @@ export default function SalesPage() {
         </div>
         {landscapeLoading ? (
           <Skeleton className="h-[350px]" />
+        ) : landscapeError ? (
+          <PanelError label="Failed to load sales chart" />
         ) : (
           <ResponsiveContainer width="100%" height={350}>
             <ComposedChart data={chartData}>
@@ -227,6 +230,8 @@ export default function SalesPage() {
               <Skeleton key={i} className="h-12" />
             ))}
           </div>
+        ) : breakdownError ? (
+          <PanelError label="Failed to load weekly breakdown" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
