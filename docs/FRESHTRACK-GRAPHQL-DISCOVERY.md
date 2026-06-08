@@ -124,6 +124,97 @@ optional.
      to mint DB creds and keep the RDS-direct sync (less churn but less typed).
    - Propose the migration plan back to Tim with the trade-offs.
 
+## Confirmed against live data (2026-06-06, Tim's token)
+
+Auth verified, ran a series of probe queries. Findings:
+
+### The hierarchy matches our two-axis model exactly
+
+```
+MACKM (Mackays Marketing)              ← THE marketer (only entity with marketerId set)
+  ↓
+MG (Mackays Growers)                   ← top-level grouping (could be our grower_groups root)
+  ↓ parent-of relationship
+recipient-level entities               ← our rcti_recipients
+  - LMBFA  (LMB)                         (3 child farms)
+  - MACMR  (Mackays - Mullins Road)
+  - MACBO  (Mackays - Bolinda)
+  - MACGT  (Mackays - Gold Tyne)
+  - MACRR  (Mackays - Ranch Road)
+  - MACSD  (Mackays - South Davidson)
+  ↓ parent-of relationship
+leaf farm entities                     ← our farms
+  - LMBCO  (LMB - Cooroo Bananas)
+  - LMBEP  (LMB - East Palmerston)
+  - LMBBF  (LMB - Bartle Frere)
+  ↓ has farmId →
+FarmNode (physical farm property)      ← richer farm metadata (region, timezone, geometry)
+```
+
+This validates the multi-farms-per-recipient cardinality Tim flagged as
+non-negotiable: the RCTI sample we parsed (LMB - Cooroo Bananas, RCTI ref
+2620-LMBCO) sits under a parent `LMBFA` entity that has 3 farms.
+
+### Entity sample stats
+
+- 200 active entities probed: 65 growers (`isGrower=true`), 135 non-growers
+  (consignees, marketers, carriers, etc.)
+- 105 farms in the top-level `farms` query
+- Real-time data flowing: pallets packed yesterday (2026-06-07)
+
+### LMBCO harvest data ties to the RCTI we have
+
+Pulled `harvestLoads(filterFarmId: "01955ac3-7ef6-5a17-4172-175b7d5aec74", filterHarvestedWithinDays: 30)`:
+
+| Docket | Harvested | Crop | Block |
+|---|---|---|---|
+| LMBCB-EF26-WK20 | 2026-05-11 | Banana Cavendish | LMB Cooroo Bananas - Entire Farm |
+| LMBCB-EF26-WK21 | 2026-05-18 | Banana Cavendish | LMB Cooroo Bananas - Entire Farm |
+| LMBCB-EF26-WK22 | 2026-05-25 | Banana Cavendish | LMB Cooroo Bananas - Entire Farm |
+
+These are precisely the harvest weeks that became the RCTI dated 03/06/2026
+we parsed earlier (the RCTI's sale dates were 16–21 May 2026 — the dispatch
+window right after these harvests).
+
+### Filtering pattern that worked
+
+- `dispatchLoads(filterConsignorIds: ["<farm-uuid>"], ...)` → **0 rows** (the
+  consignor on a dispatch is the parent recipient, NOT the leaf farm)
+- `harvestLoads(filterFarmId: "<farm-uuid>", filterHarvestedWithinDays: N)` →
+  works — this is the right grain for per-farm volume
+
+So the sync pattern is:
+1. **Per-farm production** → `harvestLoads filterFarmId` (or `pallets`
+   filtered by box-harvest-load-farm)
+2. **Per-recipient dispatch** → `dispatchLoads filterConsignorIds: [recipient]`
+3. **Marketer-scoped dispatch overall** → `dispatchLoads filterMarketerIds: [MACKM]`
+
+### Recommended sync architecture
+
+1. **Entity sync** — pull `entities(filterIsActive: true)` in batches. Classify
+   each as:
+   - `rcti_recipient` if it has child grower entities (use the `parent`
+     relation to detect) AND is itself a grower
+   - `farm` if it's a grower AND has no children
+   - Skip non-growers (they're customers/carriers, not in our scope)
+2. **Farm metadata** — for each leaf entity, follow `farm { id supplierId
+   regionId isActive }` for additional metadata.
+3. **Production data** — for each farm, pull `harvestLoads filterFarmId`
+   into `ft_consignments` (or a new `ft_harvests` table closer to the
+   GraphQL model).
+4. **Dispatch data** — pull `dispatchLoads filterMarketerIds: [MACKM]`
+   (all Mackays-marketed dispatches), with date-range filtering. Drop into
+   `ft_dispatch`.
+5. **Pallets** — for each dispatch, pull `pallets filterDispatchLoadId` to
+   reconstruct the box/pallet/origin-load chain — this is what surfaces on
+   the RCTI line items.
+6. **Charges** — `chargesApplied filterDispatchLoadId` for per-dispatch
+   charges; matches the RCTI charges section format.
+
+Auth handling: cache the token; watch `expiresOn`; re-authenticate via the
+mutation when expired. Store FT_GRAPHQL_EMAIL/FT_GRAPHQL_PASSWORD in env;
+never expose to client.
+
 ## Saved snapshots
 
 Raw GraphQL probe results are gitignored to keep the repo small:
