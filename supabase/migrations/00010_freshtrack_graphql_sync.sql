@@ -88,12 +88,20 @@ alter table public.ft_entities
   add column if not exists is_marketer_active     boolean,
   add column if not exists is_farm_active         boolean,
   add column if not exists org_legal_name         text,
+  add column if not exists classification         text,    -- skip|rcti_recipient|farm|self_paid_farm|orphan_farm
+  add column if not exists is_provisioned         boolean default false,  -- super admin has linked into farms / rcti_recipients
   add column if not exists raw_json               jsonb,
   add column if not exists synced_at              timestamptz;
 
 create unique index if not exists ft_entities_freshtrack_id_key
   on public.ft_entities (freshtrack_id)
   where freshtrack_id is not null;
+
+create index if not exists idx_ft_entities_classification
+  on public.ft_entities(classification) where classification is not null;
+create index if not exists idx_ft_entities_unprovisioned
+  on public.ft_entities(classification)
+  where classification in ('farm','self_paid_farm','rcti_recipient') and is_provisioned = false;
 
 -- ---------------------------------------------------------------------------
 -- 4. NEW TABLE — ft_harvest_loads (HarvestLoadNode grain: per-docket/per-farm).
