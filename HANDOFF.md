@@ -183,6 +183,27 @@ supabase/
     rls_isolation.sql                  the persona matrix as a runnable script
 ```
 
+## Sprint 3 status — FreshTrack GraphQL sync
+
+The legacy `v_power_bi_*` RDS sync was replaced with a typed GraphQL-driven
+sync. **Code is complete and tested; the migration is not yet applied.**
+
+| Layer | What's there |
+|---|---|
+| **Transport** | `lib/freshtrack-graphql.ts` — server-only GraphQL client with two-layer token cache, singleflight re-auth, error classification by `errors[0].code` (NOT HTTP status — verified live), typed exception hierarchy, exp backoff for 5xx, Retry-After honour. |
+| **Queries + types** | `lib/freshtrack/queries.ts` — hand-typed (no codegen) for entities, dispatchLoads, pallets, harvestLoads, chargesApplied, orderItems. |
+| **Classifier** | `lib/freshtrack/classify.ts` — maps EntityNode → `skip`/`rcti_recipient`/`farm`/`self_paid_farm`/`orphan_farm`. Pure function, mirrors `private.ft_classify_entity` SQL. |
+| **Sync helpers** | `lib/freshtrack/sync/{cursor,logger,windowing}.ts` — per-step watermark cursor in `ft_sync_state`, per-step `sync_logs` writer, sliding-window paginator with binary-shrink-on-overflow. |
+| **Per-step sync** | `lib/freshtrack/sync/{entity,dispatch,pallet,harvest,charge}Sync.ts` — each upserts into the target `ft_*` table on `freshtrack_id`. |
+| **Orchestrator** | `app/api/cron/sync-freshtrack/route.ts` — gated behind `FRESHTRACK_GRAPHQL_SYNC_ENABLED`, claims via `private.claim_freshtrack_run()`, 270s in-handler budget with per-step caps, releases on finish. |
+| **Catalogue picker** | `GET /api/hub-admin/freshtrack-catalogue` + tabbed FarmDialog. Super admin picks from synced `ft_entities` to provision farms. Recipient picker for NS deferred until the NS sync exists. |
+| **Migration 00010** | Additive: new columns on existing `ft_*` + `farms` + `rcti_recipients`, 4 new tables, helper functions in `private`. **Authored, not yet applied.** |
+| **Branch validation** | Supabase MCP began returning permission errors after the design workflow; not blocking — apply via Supabase dashboard SQL editor per the runbook. |
+
+**To bring it online**: see [`docs/FRESHTRACK-SYNC-RUNBOOK.md`](docs/FRESHTRACK-SYNC-RUNBOOK.md).
+Full multi-agent design that produced this is captured in
+[`docs/FRESHTRACK-GRAPHQL-DISCOVERY.md`](docs/FRESHTRACK-GRAPHQL-DISCOVERY.md).
+
 ## Quick health check
 
 The fastest smoke test against prod is `GET /api/health` — it returns
