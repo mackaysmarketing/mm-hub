@@ -7,12 +7,13 @@ from "code on a branch" to "running in prod"._
 
 | Piece | State |
 |---|---|
-| Migration `00010_freshtrack_graphql_sync.sql` (~30KB, additive only) | ✅ Authored, **not yet applied** to prod or a branch |
+| Migration `00010_freshtrack_graphql_sync.sql` (~30KB, additive only) | ✅ Branch-validated + **applied to prod** 2026-06-08 |
+| Migration `00011_grower_groups_code_unique.sql` (prod-reproducibility patch) | ✅ Applied to prod (was needed for 00010's ON CONFLICT (code)) |
 | `lib/freshtrack-graphql.ts` transport + `lib/freshtrack/queries.ts` + `lib/freshtrack/classify.ts` | ✅ Tested (34 vitest, mocked fetch + live smoke against FT) |
 | `lib/freshtrack/sync/*.ts` (cursor, logger, windowing, entitySync, dispatchSync, palletSync, harvestSync, chargeSync) | ✅ Code complete |
 | `app/api/cron/sync-freshtrack/route.ts` orchestrator | ✅ Code complete; gated behind `FRESHTRACK_GRAPHQL_SYNC_ENABLED=true` |
 | `app/api/hub-admin/freshtrack-catalogue` + UI tab in FarmDialog | ✅ Code complete |
-| Branch-validation via Supabase MCP | ⚠️ Blocked — MCP returned `permission denied` after the design workflow completed |
+| Branch-validation via Supabase MCP | ✅ Completed 2026-06-08 (5-category classifier verified, concurrency claim/release verified, all sanity counts match) |
 
 ## Why MCP is blocked, and the workaround
 

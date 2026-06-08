@@ -197,8 +197,9 @@ sync. **Code is complete and tested; the migration is not yet applied.**
 | **Per-step sync** | `lib/freshtrack/sync/{entity,dispatch,pallet,harvest,charge}Sync.ts` — each upserts into the target `ft_*` table on `freshtrack_id`. |
 | **Orchestrator** | `app/api/cron/sync-freshtrack/route.ts` — gated behind `FRESHTRACK_GRAPHQL_SYNC_ENABLED`, claims via `private.claim_freshtrack_run()`, 270s in-handler budget with per-step caps, releases on finish. |
 | **Catalogue picker** | `GET /api/hub-admin/freshtrack-catalogue` + tabbed FarmDialog. Super admin picks from synced `ft_entities` to provision farms. Recipient picker for NS deferred until the NS sync exists. |
-| **Migration 00010** | Additive: new columns on existing `ft_*` + `farms` + `rcti_recipients`, 4 new tables, helper functions in `private`. **Authored, not yet applied.** |
-| **Branch validation** | Supabase MCP began returning permission errors after the design workflow; not blocking — apply via Supabase dashboard SQL editor per the runbook. |
+| **Migration 00010** | Additive: new columns on existing `ft_*` + `farms` + `rcti_recipients`, 4 new tables, helper functions in `private`. ✅ Branch-validated 2026-06-08 (5-category classifier + concurrency claim/release tested) and applied to prod. |
+| **Migration 00011** | Adds the missing `grower_groups.code` UNIQUE constraint (live prod had been built without it via the 338fcbd hotfix). Idempotent — no-op on fresh DBs that have it from 00005. Applied to prod. |
+| **Branch validation** | ✅ Done. The pattern: spin up Supabase branch → apply 00010 → run sanity SQL → tear down → apply same SQL to prod. |
 
 **To bring it online**: see [`docs/FRESHTRACK-SYNC-RUNBOOK.md`](docs/FRESHTRACK-SYNC-RUNBOOK.md).
 Full multi-agent design that produced this is captured in
