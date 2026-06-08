@@ -28,6 +28,14 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# FreshTrack GraphQL probe artifacts (introspection results, smoke outputs)
+ft_*.json
+/ft-design-*.json
+/ft-queries-result.json
+/ft-types.json
+/ft-probe*.json
+/rcti-sample*.json
+
 # vercel
 .vercel
 
