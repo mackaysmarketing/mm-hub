@@ -35,6 +35,7 @@ ft_*.json
 /ft-types.json
 /ft-probe*.json
 /rcti-sample*.json
+/.ft-sync-response*.json
 
 # vercel
 .vercel
