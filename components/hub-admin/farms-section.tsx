@@ -237,6 +237,16 @@ export function FarmsSection({ groupId }: { groupId: string }) {
   );
 }
 
+interface CatalogueRow {
+  freshtrack_id: string;
+  code: string | null;
+  name: string | null;
+  classification: string | null;
+  parent_code: string | null;
+  parent_name: string | null;
+  abn: string | null;
+}
+
 function FarmDialog({
   open,
   onClose,
@@ -253,6 +263,10 @@ function FarmDialog({
   onSaved: () => void;
 }) {
   const isEdit = !!farm;
+  const [mode, setMode] = useState<"catalogue" | "manual">("catalogue");
+  const [catalogueQuery, setCatalogueQuery] = useState("");
+  const [pickedCatalogueId, setPickedCatalogueId] = useState<string | null>(null);
+
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [freshtrackCode, setFreshtrackCode] = useState("");
@@ -260,9 +274,28 @@ function FarmDialog({
   const [recipientId, setRecipientId] = useState("");
   const [active, setActive] = useState(true);
 
+  // Catalogue search (only when in catalogue mode + creating, not editing).
+  const { data: catalogue, isLoading: catalogueLoading } = useQuery<CatalogueRow[]>({
+    queryKey: ["ft-catalogue-farms", catalogueQuery],
+    queryFn: () => {
+      const p = new URLSearchParams();
+      p.set("type", "farm");
+      p.set("excludeProvisioned", "true");
+      if (catalogueQuery.trim()) p.set("search", catalogueQuery.trim());
+      return fetch(`/api/hub-admin/freshtrack-catalogue?${p.toString()}`).then((r) => {
+        if (!r.ok) throw new Error("Failed to load FreshTrack catalogue");
+        return r.json();
+      });
+    },
+    enabled: open && !isEdit && mode === "catalogue",
+  });
+
   // Seed/reset on open
   useEffect(() => {
     if (!open) return;
+    setMode(isEdit ? "manual" : "catalogue");
+    setCatalogueQuery("");
+    setPickedCatalogueId(null);
     if (farm) {
       setName(farm.name);
       setCode(farm.code ?? "");
@@ -278,7 +311,22 @@ function FarmDialog({
       setRecipientId("");
       setActive(true);
     }
-  }, [open, farm]);
+  }, [open, farm, isEdit]);
+
+  function pickCatalogueRow(row: CatalogueRow) {
+    setPickedCatalogueId(row.freshtrack_id);
+    setName(row.name ?? "");
+    setCode(row.code ?? "");
+    setFreshtrackCode(row.code ?? "");
+    setAbn(row.abn ?? "");
+    // If the catalogue parent exists as an rcti_recipient in this group with
+    // a matching freshtrack_code, pre-pick that recipient too. Best-effort —
+    // user can adjust.
+    if (row.parent_code) {
+      const candidate = recipients.find((r) => r.netsuite_entity_code === row.parent_code);
+      if (candidate) setRecipientId(candidate.id);
+    }
+  }
 
   const save = useMutation({
     mutationFn: async () => {
@@ -311,6 +359,9 @@ function FarmDialog({
           freshtrack_code: freshtrackCode || null,
           abn: abn || null,
           rcti_recipient_id: recipientId || null,
+          ...(mode === "catalogue" && pickedCatalogueId
+            ? { freshtrack_entity_uuid: pickedCatalogueId }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -333,6 +384,101 @@ function FarmDialog({
             {isEdit ? "Edit farm" : "Add farm"}
           </DialogTitle>
         </DialogHeader>
+
+        {/* Mode tabs — only for create */}
+        {!isEdit && (
+          <div className="-mt-1 mb-2 flex gap-1 rounded-md bg-sand/40 p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setMode("catalogue")}
+              className={`flex-1 rounded px-3 py-1.5 transition-colors ${
+                mode === "catalogue"
+                  ? "bg-canopy text-white"
+                  : "text-bark hover:bg-sand"
+              }`}
+            >
+              Pick from FreshTrack
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("manual");
+                setPickedCatalogueId(null);
+              }}
+              className={`flex-1 rounded px-3 py-1.5 transition-colors ${
+                mode === "manual"
+                  ? "bg-canopy text-white"
+                  : "text-bark hover:bg-sand"
+              }`}
+            >
+              Add manually
+            </button>
+          </div>
+        )}
+
+        {/* Catalogue search/picker */}
+        {!isEdit && mode === "catalogue" && (
+          <div className="space-y-2 rounded-lg border border-sand/60 bg-warmwhite p-3">
+            <Input
+              value={catalogueQuery}
+              onChange={(e) => setCatalogueQuery(e.target.value)}
+              placeholder="Search FreshTrack farms by code or name…"
+              className="border-sand bg-white text-sm"
+            />
+            <div className="max-h-44 overflow-y-auto rounded border border-sand/60 bg-cream/30">
+              {catalogueLoading ? (
+                <p className="px-3 py-4 text-xs text-stone">Loading catalogue…</p>
+              ) : (catalogue ?? []).length === 0 ? (
+                <p className="px-3 py-4 text-xs text-stone">
+                  No matching FreshTrack farms. Either the sync hasn&apos;t
+                  populated the catalogue yet, or every match is already
+                  provisioned. Switch to <em>Add manually</em> to bypass.
+                </p>
+              ) : (
+                <ul className="divide-y divide-sand/40">
+                  {(catalogue ?? []).map((row) => (
+                    <li key={row.freshtrack_id}>
+                      <button
+                        type="button"
+                        onClick={() => pickCatalogueRow(row)}
+                        className={`flex w-full items-start justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-canopy/10 ${
+                          pickedCatalogueId === row.freshtrack_id
+                            ? "bg-canopy/15 ring-1 ring-canopy/40"
+                            : ""
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-soil">
+                            <span className="mr-1.5 rounded bg-sand/70 px-1.5 py-0.5 font-mono text-xs text-bark">
+                              {row.code ?? "—"}
+                            </span>
+                            {row.name ?? "(no name)"}
+                          </p>
+                          <p className="mt-0.5 text-xs text-stone">
+                            {row.classification === "self_paid_farm" ? (
+                              <>Self-paid grower (also acts as own recipient)</>
+                            ) : row.parent_name ? (
+                              <>Under {row.parent_name}</>
+                            ) : (
+                              <>No parent recipient in FreshTrack</>
+                            )}
+                            {row.abn ? ` · ABN ${row.abn}` : ""}
+                          </p>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {pickedCatalogueId && (
+              <p className="text-xs text-canopy">
+                Picked. Adjust the fields below if needed before saving.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
