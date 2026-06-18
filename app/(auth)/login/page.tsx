@@ -70,7 +70,12 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/callback");
+    // Password sign-in establishes the session directly — there is no OAuth
+    // `code` to exchange. Routing through /callback (the OAuth-only handler)
+    // would find no code and bounce to /login?error=auth. Go straight to the
+    // portal; the session cookie is already set by signInWithPassword.
+    const destination = mode === "grower" ? "/dashboard" : "/";
+    router.push(destination);
     router.refresh();
   }
 
