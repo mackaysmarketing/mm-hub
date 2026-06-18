@@ -56,6 +56,11 @@ export interface FTEntity {
   parent: FTEntityParent | null;
   farmId: FTUuid | null;
   farm: FTFarmNodeMini | null;
+  // Role-record ids — let dispatch.consignor/consignee/carrier resolve back
+  // to the owning entity (separate id-space from EntityNode.id). See 00014.
+  consignorId: FTUuid | null;
+  consigneeId: FTUuid | null;
+  carrierId: FTUuid | null;
 }
 
 export const Q_ENTITIES_FULL = /* GraphQL */ `
@@ -71,6 +76,7 @@ export const Q_ENTITIES_FULL = /* GraphQL */ `
       parent { id code }
       farmId
       farm { id supplierId regionId timeZone isActive }
+      consignorId consigneeId carrierId
     }
   }
 `;
@@ -92,6 +98,7 @@ export const Q_ENTITIES_INCREMENTAL = /* GraphQL */ `
       parent { id code }
       farmId
       farm { id supplierId regionId timeZone isActive }
+      consignorId consigneeId carrierId
     }
   }
 `;

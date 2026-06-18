@@ -27,6 +27,9 @@ function entity(over: Partial<FTEntity> = {}): FTEntity {
     parent: null,
     farmId: null,
     farm: null,
+    consignorId: null,
+    consigneeId: null,
+    carrierId: null,
     ...over,
   };
 }

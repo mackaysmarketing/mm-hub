@@ -54,7 +54,13 @@ export async function syncDispatch(): Promise<DispatchSyncResult> {
     });
     const dispatches = res.dispatchLoads;
 
-    const rowsUpserted = await upsertDispatches(dispatches);
+    // Resolve each dispatch's consignor → provisioned farm for grower scoping.
+    const consignorIds = Array.from(
+      new Set(dispatches.map((d) => d.consignorId).filter(Boolean))
+    ) as string[];
+    const consignorToFarm = await mapConsignorsToFarms(consignorIds);
+
+    const rowsUpserted = await upsertDispatches(dispatches, consignorToFarm);
 
     await advanceWatermark(STEP, runStart, {
       rowsUpserted,
@@ -83,6 +89,53 @@ function computeWindowStart(watermark: Date | null, now: Date): Date {
   return new Date(now.getTime() - ms);
 }
 
+/**
+ * Resolve dispatch consignor role-ids → mm-hub farm ids, via:
+ *   dispatch.consignorId → ft_entities.consignor_freshtrack_id
+ *     → ft_entities.freshtrack_id → farms.freshtrack_entity_uuid → farms.id
+ * Only provisioned farms resolve; DC/marketer consignors return no entry
+ * (their dispatches stay grower_id NULL — internal-only via RLS).
+ */
+async function mapConsignorsToFarms(
+  consignorIds: string[]
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (consignorIds.length === 0) return out;
+  const admin = createAdminClient();
+
+  const { data: ents, error: entErr } = await admin
+    .from("ft_entities")
+    .select("consignor_freshtrack_id, freshtrack_id")
+    .in("consignor_freshtrack_id", consignorIds);
+  if (entErr) throw new Error(`map consignors (entities): ${entErr.message}`);
+
+  const entityToConsignor = new Map<string, string>(); // freshtrack_id → consignor id
+  const entityIds: string[] = [];
+  for (const e of ents ?? []) {
+    const fid = e.freshtrack_id as string | null;
+    const cid = e.consignor_freshtrack_id as string | null;
+    if (fid && cid) {
+      entityToConsignor.set(fid, cid);
+      entityIds.push(fid);
+    }
+  }
+  if (entityIds.length === 0) return out;
+
+  const { data: farms, error: farmErr } = await admin
+    .from("farms")
+    .select("id, freshtrack_entity_uuid")
+    .in("freshtrack_entity_uuid", entityIds);
+  if (farmErr) throw new Error(`map consignors (farms): ${farmErr.message}`);
+
+  for (const f of farms ?? []) {
+    const entityId = f.freshtrack_entity_uuid as string | null;
+    if (!entityId) continue;
+    const consignorId = entityToConsignor.get(entityId);
+    if (consignorId) out.set(consignorId, f.id as string);
+  }
+  return out;
+}
+
 function requireMarketerId(): string {
   const id = process.env.FT_MACKM_MARKETER_ID;
   if (!id) {
@@ -93,12 +146,16 @@ function requireMarketerId(): string {
   return id;
 }
 
-async function upsertDispatches(dispatches: FTDispatchLoad[]): Promise<number> {
+async function upsertDispatches(
+  dispatches: FTDispatchLoad[],
+  consignorToFarm: Map<string, string>
+): Promise<number> {
   if (dispatches.length === 0) return 0;
   const admin = createAdminClient();
   const now = new Date().toISOString();
   const payload = dispatches.map((d) => ({
     freshtrack_id: d.id,
+    grower_id: d.consignorId ? consignorToFarm.get(d.consignorId) ?? null : null,
     order_type: d.orderType,
     scheduled_pickup_on: d.scheduledPickupOn,
     actual_pickup_on: d.actualPickupOn,

@@ -97,6 +97,11 @@ async function upsertEntities(
     freshtrack_id: e.id,
     parent_freshtrack_id: e.parentId,
     farm_freshtrack_id: e.farmId,
+    // Role-record ids (00014) — resolve dispatch consignor/consignee/carrier
+    // back to this entity, and thence to a provisioned farm for grower scoping.
+    consignor_freshtrack_id: e.consignorId,
+    consignee_freshtrack_id: e.consigneeId,
+    carrier_freshtrack_id: e.carrierId,
     is_grower: e.isGrower,
     is_consignor_active: e.isConsignorActive,
     is_consignee_active: e.isConsigneeActive,
