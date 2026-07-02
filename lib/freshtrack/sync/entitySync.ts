@@ -51,6 +51,17 @@ export async function syncEntities(): Promise<EntitySyncResult> {
       rowsSeen: entities.length,
     });
 
+    // The entity sync path must end with a bulk grower-claims resync:
+    // materialised consignor_ids/is_internal claims (00015) track entity
+    // changes without a trigger on ft_entities (bulk upserts would storm
+    // one). rpc_sync_all_claims is the service-role-only public wrapper.
+    const { error: claimsError } = await createAdminClient().rpc(
+      "rpc_sync_all_claims"
+    );
+    if (claimsError) {
+      throw new Error(`grower claims resync failed: ${claimsError.message}`);
+    }
+
     return {
       rowsUpserted,
       rowsSeen: entities.length,

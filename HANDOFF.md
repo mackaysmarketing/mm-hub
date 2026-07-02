@@ -1,3 +1,69 @@
+# HANDOFF — Grower Access Claims Sprint (2026-07-02)
+
+## What shipped
+Backend data path that materialises `app_metadata.consignor_ids` (uuid array) and
+`app_metadata.is_internal` (boolean) into every user's `auth.users.raw_app_meta_data`,
+plus the per-user freshness stamp the mm-data-hub companion guard will consume.
+
+- **Migration** `supabase/migrations/00015_grower_access_claims.sql`
+  (applied to project `uqzfkhsdyeokwnkpcxui` as version `20260702012209 grower_access_claims`):
+  - `public.claim_freshness (user_id pk → auth.users on delete cascade, claims_updated_at)` —
+    RLS enabled, table privileges revoked from `anon`/`authenticated`, zero client-applicable
+    policies (the single `claim_freshness_service_role_read` policy is a no-op for advisor
+    hygiene; `service_role` has `bypassrls`).
+  - `private.resolve_consignor_ids(uuid)`, `private.resolve_is_internal(uuid)`,
+    `private.sync_user_claims(uuid)`, `private.sync_all_claims()`,
+    `private.handle_claims_change()` (trigger fn), `public.rpc_sync_all_claims()`
+    (service-role-only PostgREST wrapper). All SECURITY DEFINER, `search_path=''`,
+    EXECUTE revoked from `public`/`anon`/`authenticated`.
+  - Statement-level AFTER INSERT/UPDATE/DELETE triggers on `module_access`, `hub_users`,
+    `farms`. No trigger on `ft_entities` — the FreshTrack entity sync ends with a bulk
+    resync call instead.
+- **TypeScript**: `lib/freshtrack/sync/entitySync.ts` — `syncEntities()` now ends with
+  `rpc_sync_all_claims` (throws loudly if the resync fails, so a stale-claims state is
+  a visible step failure, never silent).
+- **Verification**: `scripts/verify_grower_claims.sql` — idempotent psql script covering
+  SPRINT.md criteria 2–8 and 11–12 with disposable-test-user setup/teardown; 25
+  assertions, fails loudly (`ON_ERROR_STOP` + raise). Ran end to end clean (exit 0)
+  against the live project.
+
+## Measured values (fixtures for the companion sprint)
+- **AC2 consignor count**: grower_admin resolver = **32** consignor UUIDs, set-equal to the
+  canonical chain (group `bffbebbe-…` Mackays Marketing → farms → ft_entities).
+- **AC10 token lifetime**: measured `exp - iat` = **3600 seconds**. ⚠️ The interim TTL
+  reduction to 600s described in SPRINT.md ("actioned in the dashboard at scoping") is NOT
+  in effect — a fresh password-grant token measured 3600s on 2026-07-02. Re-apply
+  Auth → Sessions → JWT expiry = 600 in the dashboard. Staleness is currently capped at
+  60 minutes, not 10. Both current users are internal, so the hard gate
+  (no external growers until the companion guard is live at both doors) still holds.
+- **AC11 door probe**: grower_admin claims see 8,637 of 22,450 `raw.ft_dispatch_load` rows,
+  exactly matching the superuser count filtered to that consignor set; empty claims and
+  user_metadata-poison claims both return 0 rows.
+
+## Decisions / deviations
+- **AC1 "zero policies"**: after the first advisor run flagged `claim_freshness` with
+  `rls_enabled_no_policy` (INFO), one SELECT policy scoped to `service_role` only was added.
+  This is semantically a no-op (`service_role` bypasses RLS) and keeps the interface
+  contract's real requirement — zero policies for `anon`/`authenticated`, fail closed —
+  while restoring the security-advisor output to the exact pre-sprint baseline (6 findings,
+  none related to this sprint). The verify script asserts "zero client-applicable policies +
+  no client table privileges" accordingly.
+- **Migration number**: authored as 00005 against a stale local checkout; renamed to
+  **00015** on rebase (upstream had advanced to 00014). The remote DB migration record is
+  timestamp-versioned (`20260702012209`) so nothing DB-side changes.
+- `raw`, `core`, `semantic` schemas, existing RLS policies, and existing migration files
+  untouched. Policy counts before/after: raw 10/10, core 12/12, semantic 0/0.
+- Legacy scalar `consignor_id` key is never written (asserted).
+
+## Next steps (companion sprint / ops)
+1. Re-apply the 600s JWT expiry in the Supabase dashboard (see ⚠️ above).
+2. mm-data-hub companion: freshness guard reading `public.claim_freshness` at both doors
+   (Postgres `semantic.*` functions + Cube Cloud auth layer), rule: token `iat` <
+   `claims_updated_at` → treat claims as empty/false.
+3. Hard gate stands: no external grower user provisioning until the guard is live.
+
+---
+
 # MM-Hub Grower Portal — Session Handoff
 
 _Captured 2026-06-06 at end of the foundation rebuild session._
