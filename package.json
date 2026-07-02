@@ -29,6 +29,7 @@
     "lucide-react": "^0.577.0",
     "next": "14.2.35",
     "oauth-1.0a": "^2.2.6",
+    "papaparse": "^5.5.3",
     "pg": "^8.20.0",
     "react": "^18",
     "react-dom": "^18",
@@ -37,10 +38,12 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
     "tw-animate-css": "^1.4.0",
+    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^20.19.37",
+    "@types/papaparse": "^5.5.2",
     "@types/pg": "^8.18.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
