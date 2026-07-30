@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/sync-netsuite",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/processes",
+      "schedule": "0 * * * *"
     }
   ]
 }
