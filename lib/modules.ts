@@ -25,6 +25,7 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
           "Forecasting",
           "Remittances",
           "Documents",
+          "Tools",
         ],
         capabilities: [
           "manage_users",
@@ -48,6 +49,7 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
           "Forecasting",
           "Remittances",
           "Documents",
+          "Tools",
         ],
         capabilities: ["view_all_growers"],
       },
@@ -146,6 +148,12 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
         label: "Forecasting",
         href: "/forecasting",
         icon: "LineChart",
+      },
+      {
+        id: "Tools",
+        label: "Tools",
+        href: "/tools",
+        icon: "Wrench",
       },
     ],
   },

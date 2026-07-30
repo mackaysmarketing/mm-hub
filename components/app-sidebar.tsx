@@ -24,6 +24,7 @@ import {
   ClipboardList,
   Truck,
   Warehouse,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ClipboardList,
   Truck,
   Warehouse,
+  Wrench,
 };
 
 interface AppSidebarProps {
