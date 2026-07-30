@@ -1,5 +1,5 @@
 -- =============================================================================
--- Migration 00014 — Prerequisites for ft_orders / ft_order_items sync (Phase 1)
+-- Migration 00016 — Prerequisites for ft_orders / ft_order_items sync (Phase 1)
 -- =============================================================================
 -- Part A — finish the job migration 00013 deliberately deferred.
 --
