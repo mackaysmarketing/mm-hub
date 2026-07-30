@@ -21,6 +21,8 @@ import { syncDispatch } from "@/lib/freshtrack/sync/dispatchSync";
 import { syncPallets } from "@/lib/freshtrack/sync/palletSync";
 import { syncHarvests } from "@/lib/freshtrack/sync/harvestSync";
 import { syncCharges } from "@/lib/freshtrack/sync/chargeSync";
+import { syncOrders } from "@/lib/freshtrack/sync/orderSync";
+import { syncOrderItems } from "@/lib/freshtrack/sync/orderItemSync";
 import {
   AuthCredentialsError,
   ConfigError,
@@ -33,12 +35,25 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const HANDLER_BUDGET_MS = 270_000;
+
+/**
+ * NOTE ON OVER-COMMITMENT: with orders + orderItems added, the declared budgets
+ * sum to 360s against a 270s ceiling. That is intentional and safe — runStep()
+ * gates on ACTUAL elapsed time, not on the sum of declarations, and observed
+ * full runs complete in ~17s. Over-commitment only bites if the earlier steps
+ * genuinely consume their whole budgets, in which case the LAST steps are the
+ * ones skipped. Orders/orderItems are deliberately last so they degrade first:
+ * a skip does not advance their watermark and costs nothing but a day's latency,
+ * whereas skipping entities/dispatch would break the grower-facing dashboards.
+ */
 const PER_STEP_BUDGETS_MS: Record<string, number> = {
   entities: 30_000,
   harvests: 90_000,
   dispatch: 60_000,
   pallets: 60_000,
   charges: 30_000,
+  orders: 30_000,
+  orderItems: 60_000,
 };
 
 interface StepRunResult {
@@ -199,6 +214,48 @@ export async function GET(request: Request) {
     });
     stepResults.push(chargeStep);
     await writeStepLog(ctx, toStepResult(chargeStep));
+
+    // ---- Step 6: customer orders (forward-looking scheduledDeliveryOn window).
+    // Depends on Step 1 only, for consignor→farm and consignee→name mapping.
+    const orderStep = await runStep("orders", PER_STEP_BUDGETS_MS.orders, startTime, async () => {
+      const r = await syncOrders();
+      return {
+        recordsSynced: r.rowsUpserted,
+        recordsSeen: r.rowsSeen,
+        windowStart: r.windowStart,
+        windowEnd: r.windowEnd,
+        graphqlCalls: r.graphqlCalls,
+        payload: {
+          windows: r.windows,
+          missing_order_date: r.missingOrderDate,
+          unresolved_consignors: r.unresolvedConsignors,
+          marketer_breakdown: r.marketerBreakdown,
+        },
+      };
+    });
+    stepResults.push(orderStep);
+    await writeStepLog(ctx, toStepResult(orderStep));
+
+    // ---- Step 7: order line items (per-order fan-out, incremental by absence).
+    // Reads its work-list from ft_orders, so it is NOT gated on Step 6 — if
+    // Step 6 was skipped this run it simply drains whatever is still stale.
+    const orderItemStep = await runStep("orderItems", PER_STEP_BUDGETS_MS.orderItems, startTime, async () => {
+      const r = await syncOrderItems();
+      return {
+        recordsSynced: r.rowsUpserted,
+        recordsSeen: r.rowsSeen,
+        windowStart: null,
+        windowEnd: null,
+        graphqlCalls: r.graphqlCalls,
+        payload: {
+          orders_queried: r.ordersQueried,
+          orders_deferred: r.ordersDeferred,
+          orders_with_no_items: r.ordersWithNoItems,
+        },
+      };
+    });
+    stepResults.push(orderItemStep);
+    await writeStepLog(ctx, toStepResult(orderItemStep));
 
     // ---- Finalize. Run is "success" only if ALL steps succeeded; otherwise "partial".
     const anyFailed = stepResults.some((s) => s.status === "failed" || s.fatal);
