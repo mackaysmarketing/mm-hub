@@ -327,34 +327,209 @@ export const Q_CHARGES_APPLIED_WINDOW = /* GraphQL */ `
   }
 `;
 
+// --- ProductNode + CropNode (the crop catalogue) ------------------------
+// Needed by the consignor auto-assignment process: a rule may be crop-specific
+// (Coles Eastern Creek splits Papaya vs Passionfruit), and crop is only
+// reachable as orderItem.productId → product.cropId. Both queries take no
+// filter args and the tables are tiny (251 products, 7 crops), so orderSync
+// pulls them whole and caches per run.
+
+export interface FTCrop {
+  id: FTUuid;
+  code: string;
+  name: string;
+}
+
+export interface FTProductMini {
+  id: FTUuid;
+  code: string;
+  name: string;
+  cropId: FTUuid | null;
+}
+
+export const Q_CROPS = /* GraphQL */ `
+  query Crops($limit: Int!) {
+    crops(filterLimit: $limit) {
+      id code name
+    }
+  }
+`;
+
+/** NOTE: `products` accepts NO arguments — it always returns the full set. */
+export const Q_PRODUCTS_ALL = /* GraphQL */ `
+  query ProductsAll {
+    products {
+      id code name cropId
+    }
+  }
+`;
+
+// --- OrderStateNode (stable codes; drives the cancellation guard) --------
+// Codes are stable strings — prefer them over UUIDs in config. Observed set:
+// OR Ordered, SH Shipped, RI Ready to Invoice, IN Invoiced, RE Remitted,
+// PD Paid, CL Closed, CA Cancelled, FI Filled, SY Synched, Default,
+// FORD Farm Order, WLMO WWG- Load Moved.
+
+export interface FTOrderState {
+  id: FTUuid;
+  code: string;
+  name: string;
+  sequence: number;
+  isActive: boolean;
+}
+
+export const Q_ORDER_STATES = /* GraphQL */ `
+  query OrderStates {
+    orderStates {
+      id code name sequence isActive
+    }
+  }
+`;
+
+// --- OrderNode ----------------------------------------------------------
+// IMPORTANT: `orders` exposes NO filterLastModifiedOnStart — verified against
+// live FT 2026-07-30, which rejects it with
+// "Unknown argument 'filterLastModifiedOnStart' on field 'Query.orders'".
+// (The cursor.ts header comment lists OrderNode among nodes that accept it —
+// that comment is wrong.) OrderNode also has no modifiedOn field, and
+// latestVersionNo was 1 on every order observed. So orders CANNOT use the
+// watermark pattern: orderSync sweeps a scheduledDeliveryOn date window via
+// ftPagedDateWindow and relies on upsert idempotency.
+
+export interface FTOrder {
+  id: FTUuid;
+  priority: number | null;
+  type: string;
+  orderNo: string;
+  salesOrderNo: string;
+  poNo: string;
+  comment: string;
+  info: string;
+  scheduledPickupOn: FTDateTime | null;
+  actualPickupOn: FTDateTime | null;
+  scheduledDeliveryOn: FTDateTime | null;
+  actualDeliveryOn: FTDateTime | null;
+  isEdi: boolean;
+  ediStatus: string | null;
+  totalOrdered: number | null;
+  isArchived: boolean;
+  stateId: FTUuid;
+  consignorId: FTUuid | null;
+  consigneeId: FTUuid | null;
+  parentConsigneeId: FTUuid | null;
+  marketAreaId: FTUuid | null;
+  marketerId: FTUuid | null;
+  supplierId: FTUuid | null;
+  deliveryContactId: FTUuid | null;
+  shedId: FTUuid | null;
+  saleEntityId: FTUuid | null;
+  latestVersionNo: number | null;
+}
+
+/**
+ * Window on scheduledDeliveryOn (NOT actualPickupOn as dispatchSync does):
+ * actual* fields are null for every not-yet-shipped order, so an actual-based
+ * window would miss exactly the forward-dated orders the consignor process
+ * exists to act on.
+ */
+export const Q_ORDERS_BY_DELIVERY_WINDOW = /* GraphQL */ `
+  query OrdersByDeliveryWindow(
+    $limit: Int!
+    $deliveryStart: DateTime
+    $deliveryEnd: DateTime
+  ) {
+    orders(
+      filterLimit: $limit
+      filterScheduledDeliveryOnStart: $deliveryStart
+      filterScheduledDeliveryOnEnd: $deliveryEnd
+      filterArchived: false
+    ) {
+      id priority type
+      orderNo salesOrderNo poNo
+      comment info
+      scheduledPickupOn actualPickupOn scheduledDeliveryOn actualDeliveryOn
+      isEdi ediStatus
+      totalOrdered isArchived
+      stateId
+      consignorId consigneeId parentConsigneeId
+      marketAreaId marketerId supplierId
+      deliveryContactId shedId saleEntityId
+      latestVersionNo
+    }
+  }
+`;
+
+// --- OrderVersionNode ---------------------------------------------------
+// One call per order; there is no bulk "versions for many orders" query.
+// NOTE: OrderVersionNode has NO `isLatest` field — pick the max versionNo.
+
+export interface FTOrderVersion {
+  id: FTUuid;
+  versionNo: number;
+}
+
+export const Q_ORDER_VERSIONS_BY_ORDER = /* GraphQL */ `
+  query OrderVersionsByOrder($orderId: UUID!) {
+    orderVersions(filterOrderId: $orderId) {
+      id versionNo
+    }
+  }
+`;
+
 // --- OrderItemNode (per-version order detail) ---------------------------
 
 export interface FTOrderItem {
   id: FTUuid;
+  orderVersionId: FTUuid;
   productId: FTUuid | null;
   shedId: FTUuid | null;
   dispatchLoadId: FTUuid | null;
   palletCount: number | null;
   boxesPerPallet: number | null;
+  handStack: number | null;
+  isSplit: boolean | null;
+  ti: number | null;
+  unsplitHi: number | null;
+  bottomHi: number | null;
+  topHi: number | null;
   priceValue: number | null;
   priceCurrency: string;
   pricePer: string;
   remittedPriceValue: number | null;
   remittedPriceCurrency: string;
   proposedQuantity: number | null;
+  proposedPriceValue: number | null;
+  proposedPriceCurrency: string;
+  discountValue: number | null;
+  discountCurrency: string;
+  discountPercentage: number | null;
   itemNo: string;
+  ean13: string | null;
+  ean14: string | null;
   lineNo: number | null;
 }
 
+/**
+ * FIXED 2026-07-30: previously selected neither `productId` nor `shedId`,
+ * `dispatchLoadId` nor `orderVersionId`, despite FTOrderItem declaring all
+ * four — a lock-step violation against this file's own header rule. `productId`
+ * is load-bearing: it is the ONLY route from an order to its crop, which the
+ * crop-specific consignor rules depend on. Selection now matches the interface
+ * and the ft_order_items columns.
+ */
 export const Q_ORDER_ITEMS_BY_ORDER_VERSION = /* GraphQL */ `
   query OrderItemsByOrderVersion($orderVersionId: UUID!) {
     orderItems(filterOrderVersionId: $orderVersionId) {
       id
-      palletCount boxesPerPallet
+      orderVersionId
+      productId shedId dispatchLoadId
+      palletCount boxesPerPallet handStack isSplit
+      ti unsplitHi bottomHi topHi
       priceValue priceCurrency pricePer
       remittedPriceValue remittedPriceCurrency
-      proposedQuantity
-      itemNo lineNo
+      proposedQuantity proposedPriceValue proposedPriceCurrency
+      discountValue discountCurrency discountPercentage
+      itemNo ean13 ean14 lineNo
     }
   }
 `;
@@ -378,6 +553,21 @@ export interface RspHarvestLoads {
 }
 export interface RspChargesApplied {
   chargesApplied: FTChargeApplied[];
+}
+export interface RspCrops {
+  crops: FTCrop[];
+}
+export interface RspProducts {
+  products: FTProductMini[];
+}
+export interface RspOrderStates {
+  orderStates: FTOrderState[];
+}
+export interface RspOrders {
+  orders: FTOrder[];
+}
+export interface RspOrderVersions {
+  orderVersions: FTOrderVersion[];
 }
 export interface RspOrderItems {
   orderItems: FTOrderItem[];
