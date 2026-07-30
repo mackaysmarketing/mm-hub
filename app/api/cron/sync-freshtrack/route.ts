@@ -249,7 +249,9 @@ export async function GET(request: Request) {
         graphqlCalls: r.graphqlCalls,
         payload: {
           orders_queried: r.ordersQueried,
+          orders_pending: r.ordersPending,
           orders_deferred: r.ordersDeferred,
+          stopped_early: r.stoppedEarly,
           orders_with_no_items: r.ordersWithNoItems,
         },
       };

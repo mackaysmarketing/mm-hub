@@ -57,16 +57,30 @@ import {
 const STEP: FtSyncEntityType = "orderItems";
 
 const PARALLEL_FANOUT = 5; // mirrors palletSync
-const MAX_ORDERS_PER_RUN = 250; // hard cap so this can't starve the budget
+const MAX_ORDERS_PER_RUN = 600; // see note below
 const UPSERT_CHUNK = 500;
+
+/**
+ * Stop fanning out once this much wall-clock has gone, flush what we have, and
+ * report partial progress. The route allots this step 60s; overrunning gets the
+ * whole lambda killed at Vercel's 300s ceiling, which would leave
+ * ft_sync_state stuck on "running" with nothing written. Measured: 250 orders
+ * = 502 GraphQL calls ≈ 36s, so 45s is roughly 300 orders of headroom and the
+ * 600 cap is the outer bound, not the expected stopping point.
+ */
+const SOFT_BUDGET_MS = 45_000;
 
 export interface OrderItemSyncResult {
   rowsUpserted: number;
   rowsSeen: number;
   graphqlCalls: number;
   ordersQueried: number;
-  /** Orders still pending after the cap — next run picks them up. */
+  /** TRUE backlog of stale orders before this run — not capped. */
+  ordersPending: number;
+  /** Stale orders left after this run. */
   ordersDeferred: number;
+  /** Fan-out halted on SOFT_BUDGET_MS rather than finishing its slice. */
+  stoppedEarly: boolean;
   /** Orders whose latest version returned zero lines (legitimate, but notable). */
   ordersWithNoItems: number;
 }
@@ -200,18 +214,28 @@ export async function syncOrderItems(): Promise<OrderItemSyncResult> {
     // It exists because PostgREST cannot compare two columns in a filter —
     // `items_synced_version.lt.latest_version_no` would compare against the
     // literal string "latest_version_no", not the column.
+    // TRUE backlog, uncapped. A head/exact count is one cheap round trip and
+    // avoids the trap of inferring the backlog from a capped page: fetching
+    // `limit MAX + 1` can only ever report "one more", which read as
+    // "1 deferred" when the real figure was 1,609.
+    const { count: pendingCount, error: cntErr } = await admin
+      .from("ft_orders")
+      .select("freshtrack_id", { count: "exact", head: true })
+      .not("freshtrack_id", "is", null)
+      .eq("items_stale", true);
+    if (cntErr) throw new Error(`ft_orders pending count: ${cntErr.message}`);
+    const ordersPending = pendingCount ?? 0;
+
     const { data: pendingRaw, error: pendErr } = await admin
       .from("ft_orders")
       .select("freshtrack_id, latest_version_no")
       .not("freshtrack_id", "is", null)
       .eq("items_stale", true)
       .order("scheduled_delivery_on", { ascending: false })
-      .limit(MAX_ORDERS_PER_RUN + 1);
+      .limit(MAX_ORDERS_PER_RUN);
     if (pendErr) throw new Error(`ft_orders pending scan: ${pendErr.message}`);
 
-    const allPending = (pendingRaw ?? []) as unknown as PendingOrder[];
-    const deferred = Math.max(0, allPending.length - MAX_ORDERS_PER_RUN);
-    const pending = allPending.slice(0, MAX_ORDERS_PER_RUN);
+    const pending = (pendingRaw ?? []) as unknown as PendingOrder[];
 
     if (pending.length === 0) {
       await advanceWatermark(STEP, runStart, { rowsUpserted: 0, rowsSeen: 0 });
@@ -220,7 +244,9 @@ export async function syncOrderItems(): Promise<OrderItemSyncResult> {
         rowsSeen: 0,
         graphqlCalls: 0,
         ordersQueried: 0,
+        ordersPending: 0,
         ordersDeferred: 0,
+        stoppedEarly: false,
         ordersWithNoItems: 0,
       };
     }
@@ -239,11 +265,21 @@ export async function syncOrderItems(): Promise<OrderItemSyncResult> {
 
     let calls = 2;
     let ordersWithNoItems = 0;
-    const itemRows: ReturnType<typeof toFtOrderItemRow>[] = [];
-    const orderPatches: Record<string, unknown>[] = [];
+    let rowsUpserted = 0;
+    let rowsSeen = 0;
+    let ordersDone = 0;
+    let stoppedEarly = false;
     const syncedAt = new Date().toISOString();
 
     for (let i = 0; i < pending.length; i += PARALLEL_FANOUT) {
+      // Graceful stop: flush-per-chunk (below) means everything already
+      // written stays written and items_stale clears for those orders, so the
+      // next run resumes exactly where this one left off.
+      if (Date.now() - runStart.getTime() > SOFT_BUDGET_MS) {
+        stoppedEarly = true;
+        break;
+      }
+
       const slice = pending.slice(i, i + PARALLEL_FANOUT);
       const results = await Promise.all(
         slice.map(async (o) => {
@@ -262,6 +298,8 @@ export async function syncOrderItems(): Promise<OrderItemSyncResult> {
       );
       calls += slice.length * 2;
 
+      const itemRows: ReturnType<typeof toFtOrderItemRow>[] = [];
+      const orderPatches: Record<string, unknown>[] = [];
       for (const r of results) {
         if (r.items.length === 0) ordersWithNoItems += 1;
         for (const it of r.items) {
@@ -277,22 +315,27 @@ export async function syncOrderItems(): Promise<OrderItemSyncResult> {
           ...roll,
         });
       }
+
+      // Flush this chunk before fetching the next. Accumulating everything and
+      // writing once at the end meant a killed lambda lost the whole run's
+      // work; per-chunk commits cap the loss at one chunk. Items first, so an
+      // order is never marked synced while its lines are missing.
+      rowsUpserted += await upsertItems(itemRows);
+      await patchOrders(orderPatches);
+      rowsSeen += itemRows.length;
+      ordersDone += results.length;
     }
 
-    const rowsUpserted = await upsertItems(itemRows);
-    await patchOrders(orderPatches);
-
-    await advanceWatermark(STEP, runStart, {
-      rowsUpserted,
-      rowsSeen: itemRows.length,
-    });
+    await advanceWatermark(STEP, runStart, { rowsUpserted, rowsSeen });
 
     return {
       rowsUpserted,
-      rowsSeen: itemRows.length,
+      rowsSeen,
       graphqlCalls: calls,
-      ordersQueried: pending.length,
-      ordersDeferred: deferred,
+      ordersQueried: ordersDone,
+      ordersPending,
+      ordersDeferred: Math.max(0, ordersPending - ordersDone),
+      stoppedEarly,
       ordersWithNoItems,
     };
   } catch (err) {
