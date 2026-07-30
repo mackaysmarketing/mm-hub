@@ -82,8 +82,8 @@ interface OverviewResponse {
 
 interface RuleRow {
   id: string;
-  consignee_entity_code: string;
-  consignee_freshtrack_id: string;
+  consignee_entity_code: string | null; // null = any customer (global crop rule)
+  consignee_freshtrack_id: string | null;
   crop_id: string | null;
   crop_name: string | null;
   consignor_entity_code: string;
@@ -116,6 +116,12 @@ interface SettingsResponse {
     discovery_lookback_days?: number;
     discovery_horizon_days?: number;
   };
+}
+
+interface OrderStateOption {
+  code: string;
+  name: string;
+  sequence: number;
 }
 
 const SKIP_REASON_LABEL: Record<string, string> = {
@@ -455,9 +461,19 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
                 </TableRow>
               ) : (
                 rules.map((rule) => (
-                  <TableRow key={rule.id} className="border-sand/50">
+                  <TableRow
+                    key={rule.id}
+                    className={`border-sand/50 ${rule.consignee_entity_code === null ? "bg-harvest/5" : ""}`}
+                  >
                     <TableCell className="font-medium text-soil">
-                      {rule.consignee_entity_code}
+                      {rule.consignee_entity_code ?? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Badge variant="outline" className="border-harvest/40 text-harvest">
+                            Global
+                          </Badge>
+                          Any customer
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-bark">{rule.crop_name ?? "Any"}</TableCell>
                     <TableCell className="text-bark">{rule.consignor_entity_code}</TableCell>
@@ -479,8 +495,8 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
                             className="h-7 w-7"
                             onClick={() => {
                               setForm({
-                                consignee_entity_code: rule.consignee_entity_code,
-                                consignee_freshtrack_id: rule.consignee_freshtrack_id,
+                                consignee_entity_code: rule.consignee_entity_code ?? "",
+                                consignee_freshtrack_id: rule.consignee_freshtrack_id ?? "",
                                 crop_id: rule.crop_id ?? "",
                                 crop_name: rule.crop_name ?? "",
                                 consignor_entity_code: rule.consignor_entity_code,
@@ -498,7 +514,8 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
                             className="h-7 w-7"
                             disabled={deleteMutation.isPending}
                             onClick={() => {
-                              if (confirm(`Delete the ${rule.consignee_entity_code} → ${rule.consignor_entity_code} rule?`)) {
+                              const label = rule.consignee_entity_code ?? "Any customer";
+                              if (confirm(`Delete the ${label} → ${rule.consignor_entity_code} rule?`)) {
                                 deleteMutation.mutate(rule.id);
                               }
                             }}
@@ -569,11 +586,15 @@ function RuleFormDialog({
   pending: boolean;
   error?: string;
 }) {
+  const hasConsigneeCode = form.consignee_entity_code.trim().length > 0;
+  const hasConsigneeId = form.consignee_freshtrack_id.trim().length > 0;
+  const consigneeConsistent = hasConsigneeCode === hasConsigneeId;
+  const hasCrop = form.crop_id.trim().length > 0;
   const valid =
-    form.consignee_entity_code.trim() &&
-    form.consignee_freshtrack_id.trim() &&
-    form.consignor_entity_code.trim() &&
-    form.consignor_freshtrack_id.trim();
+    Boolean(form.consignor_entity_code.trim()) &&
+    Boolean(form.consignor_freshtrack_id.trim()) &&
+    consigneeConsistent &&
+    (hasConsigneeCode || hasCrop);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
@@ -581,34 +602,41 @@ function RuleFormDialog({
         <DialogHeader>
           <DialogTitle className="text-soil">{title}</DialogTitle>
           <DialogDescription className="text-stone">
-            Customer + optional crop → the consignor to assign when it&apos;s blank.
+            Customer + optional crop → the consignor to assign when it&apos;s blank. Leave
+            the customer fields blank for a rule that applies to ANY customer for that
+            crop — e.g. all Passionfruit via SQBR.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Customer code *">
+            <Field label="Customer code">
               <Input
                 value={form.consignee_entity_code}
                 onChange={(e) => setForm({ ...form, consignee_entity_code: e.target.value })}
-                placeholder="e.g. COLME"
+                placeholder="e.g. COLME — blank = Any customer"
                 className="border-sand bg-white"
               />
             </Field>
-            <Field label="Consignee FreshTrack role id *">
+            <Field label="Consignee FreshTrack role id">
               <Input
                 value={form.consignee_freshtrack_id}
                 onChange={(e) => setForm({ ...form, consignee_freshtrack_id: e.target.value })}
-                placeholder="UUID"
+                placeholder="UUID — blank = Any customer"
                 className="border-sand bg-white font-mono text-xs"
               />
             </Field>
           </div>
+          {!consigneeConsistent && (
+            <p className="text-xs text-blaze">
+              Customer code and role id must be given together, or both left blank.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Crop (optional)">
+            <Field label={hasConsigneeCode ? "Crop (optional)" : "Crop *"}>
               <Input
                 value={form.crop_name}
                 onChange={(e) => setForm({ ...form, crop_name: e.target.value })}
-                placeholder="e.g. Papaya — blank = Any"
+                placeholder="e.g. Passionfruit — blank = Any"
                 className="border-sand bg-white"
               />
             </Field>
@@ -621,6 +649,12 @@ function RuleFormDialog({
               />
             </Field>
           </div>
+          {!hasConsigneeCode && !hasCrop && (
+            <p className="text-xs text-blaze">
+              A rule needs a customer, a crop, or both — leaving everything blank would
+              match every order.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Consignor code *">
               <Input
@@ -839,6 +873,11 @@ function ScheduleTab({ isHubAdmin }: { isHubAdmin: boolean }) {
     queryKey: ["tools-consignor-settings"],
     queryFn: () => safeFetch<SettingsResponse>(`${BASE}/settings`),
   });
+  const { data: orderStates } = useQuery<OrderStateOption[]>({
+    queryKey: ["tools-consignor-order-states"],
+    queryFn: () => safeFetch<OrderStateOption[]>(`${BASE}/order-states`),
+    staleTime: 5 * 60 * 1000, // the state catalogue barely ever changes
+  });
 
   const patchMutation = useMutation({
     mutationFn: async (patch: Record<string, unknown>) => {
@@ -863,6 +902,19 @@ function ScheduleTab({ isHubAdmin }: { isHubAdmin: boolean }) {
   if (error || !data) return <PanelError className="mt-4" label="Failed to load settings — try refreshing" />;
 
   const assignableStates = data.config.assignable_state_codes ?? ["OR", "FORD", "Default"];
+
+  function toggleState(code: string) {
+    const next = assignableStates.includes(code)
+      ? assignableStates.filter((c) => c !== code)
+      : [...assignableStates, code];
+    // Non-null: this closure only ever runs from JSX rendered after the
+    // `if (error || !data) return` guard above, so data is always defined
+    // by the time a checkbox can be clicked — TS just can't see that through
+    // a nested function declaration.
+    patchMutation.mutate({
+      config: { ...data!.config, assignable_state_codes: next },
+    });
+  }
 
   return (
     <div className="mt-4 rounded-xl border border-sand bg-warmwhite p-5">
@@ -906,15 +958,36 @@ function ScheduleTab({ isHubAdmin }: { isHubAdmin: boolean }) {
         </select>
       </Row>
 
-      <Row label="Assignable states" hint="Everything else is skipped">
-        <div className="flex flex-wrap gap-1">
-          {assignableStates.map((code) => (
-            <Badge key={code} variant="outline" className="border-canopy/30 text-canopy">
-              {code}
-            </Badge>
-          ))}
-        </div>
-      </Row>
+      <div className="border-b border-sand py-3.5">
+        <p className="text-sm text-soil">Assignable states</p>
+        <p className="mb-2.5 text-xs text-stone">
+          The tool only acts on orders in a checked state — everything else (including
+          Cancelled) is skipped. A newly-added FreshTrack state starts unchecked, so it&apos;s
+          never assignable until someone opts it in.
+        </p>
+        {!orderStates ? (
+          <Skeleton className="h-16 rounded-lg" />
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+            {orderStates.map((state) => (
+              <label
+                key={state.code}
+                className={`flex items-center gap-2 text-xs ${isHubAdmin ? "cursor-pointer text-bark" : "text-stone"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={assignableStates.includes(state.code)}
+                  disabled={!isHubAdmin || patchMutation.isPending}
+                  onChange={() => toggleState(state.code)}
+                  className="h-3.5 w-3.5 rounded border-sand accent-canopy disabled:opacity-60"
+                />
+                <span className="font-mono text-[11px] text-stone">{state.code}</span>
+                {state.name}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center justify-between pt-4">
         <div>

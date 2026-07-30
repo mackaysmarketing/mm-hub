@@ -22,8 +22,9 @@ const ENTITY_FETCH_LIMIT = 1000;
 
 export interface RuleRow {
   id: string;
-  consignee_entity_code: string;
-  consignee_freshtrack_id: string;
+  // null = any customer (global crop rule) — migration 00018.
+  consignee_entity_code: string | null;
+  consignee_freshtrack_id: string | null;
   crop_id: string | null;
   crop_name: string | null;
   consignor_entity_code: string;
@@ -69,7 +70,12 @@ export async function resolveRules(): Promise<ResolvedRules> {
   const invalidRules: InvalidRule[] = [];
 
   for (const row of rows) {
-    if (!consigneeExists.has(row.consignee_freshtrack_id)) {
+    // A global rule (consignee_freshtrack_id null) has no consignee to
+    // validate — skip straight to the consignor check.
+    if (
+      row.consignee_freshtrack_id &&
+      !consigneeExists.has(row.consignee_freshtrack_id)
+    ) {
       invalidRules.push({
         rule: row,
         reason: `consignee ${row.consignee_entity_code} not found live`,

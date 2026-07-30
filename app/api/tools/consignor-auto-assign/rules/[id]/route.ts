@@ -18,6 +18,18 @@ const EDITABLE_FIELDS = [
   "notes",
 ] as const;
 
+// These columns are nullable and mean something specific when null (e.g.
+// consignee null = "any customer"). The UI form sends "" for a cleared
+// field, not null — coerce so an edit can't silently write an empty STRING
+// into a column whose semantics depend on true NULL.
+const NULLABLE_ON_BLANK = new Set([
+  "consignee_entity_code",
+  "consignee_freshtrack_id",
+  "crop_id",
+  "crop_name",
+  "notes",
+]);
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -36,7 +48,12 @@ export async function PATCH(
 
   const patch: Record<string, unknown> = {};
   for (const field of EDITABLE_FIELDS) {
-    if (field in body) patch[field] = body[field];
+    if (!(field in body)) continue;
+    const value = body[field];
+    patch[field] =
+      NULLABLE_ON_BLANK.has(field) && typeof value === "string" && value.trim() === ""
+        ? null
+        : value;
   }
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "No editable fields provided" }, { status: 400 });
@@ -60,6 +77,14 @@ export async function PATCH(
             "An active rule already exists for this customer + crop combination.",
         },
         { status: 409 }
+      );
+    }
+    // consignor_rules_not_fully_wildcard — e.g. clearing consignee on a rule
+    // that has no crop set either, which would match every order.
+    if (error.code === "23514") {
+      return NextResponse.json(
+        { error: "A rule needs a customer, a crop, or both." },
+        { status: 400 }
       );
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
