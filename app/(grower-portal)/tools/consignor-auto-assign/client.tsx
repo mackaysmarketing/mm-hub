@@ -12,6 +12,7 @@ import {
   XCircle,
   Loader2,
   RotateCcw,
+  Mail,
 } from "lucide-react";
 
 import { TopBar } from "@/components/top-bar";
@@ -42,6 +43,9 @@ import { safeFetch } from "@/lib/portal-constants";
 
 const BASE = "/api/tools/consignor-auto-assign";
 const RUN_URL = "/api/processes/consignor_auto_assign/run";
+const REPORT_BASE = `${BASE}/report-settings`;
+const REPORT_RUN_URL = "/api/processes/consignor_auto_assign_report/run";
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // --------------------------------------------------------------- shared types
 
@@ -124,6 +128,28 @@ interface OrderStateOption {
   sequence: number;
 }
 
+interface ReportSettingsResponse {
+  process: {
+    key: string;
+    name: string;
+    enabled: boolean;
+    config: {
+      recipient_email?: string;
+      schedule?: SettingsResponse["config"]["schedule"];
+    };
+    updated_at: string;
+  } | null;
+  latestRun: {
+    id: string;
+    trigger: "cron" | "manual";
+    status: string;
+    started_at: string;
+    completed_at: string | null;
+    error: string | null;
+    payload: Record<string, unknown> | null;
+  } | null;
+}
+
 const SKIP_REASON_LABEL: Record<string, string> = {
   ambiguous_multi_crop: "Mixed crops — no single correct consignor",
   no_rule_matched: "No mapping rule for this customer/crop",
@@ -152,6 +178,7 @@ export function ConsignorAutoAssignClient({ isHubAdmin }: { isHubAdmin: boolean 
           <TabsTrigger value="rules">Mapping rules</TabsTrigger>
           <TabsTrigger value="activity">Activity log</TabsTrigger>
           <TabsTrigger value="schedule">Schedule &amp; run</TabsTrigger>
+          <TabsTrigger value="reports">Email reports</TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
           <OverviewTab isHubAdmin={isHubAdmin} />
@@ -164,6 +191,9 @@ export function ConsignorAutoAssignClient({ isHubAdmin }: { isHubAdmin: boolean 
         </TabsContent>
         <TabsContent value="schedule">
           <ScheduleTab isHubAdmin={isHubAdmin} />
+        </TabsContent>
+        <TabsContent value="reports">
+          <ReportsTab isHubAdmin={isHubAdmin} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1016,6 +1046,209 @@ function ScheduleTab({ isHubAdmin }: { isHubAdmin: boolean }) {
       {patchMutation.isError && (
         <p className="mt-3 text-xs text-blaze">{patchMutation.error?.message}</p>
       )}
+    </div>
+  );
+}
+
+// --------------------------------------------------------------- Reports
+
+function RunStatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    success: "bg-canopy/10 text-canopy",
+    partial: "bg-harvest/15 text-harvest",
+    failed: "bg-blaze/10 text-blaze",
+    running: "bg-sand/60 text-stone",
+  };
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-sand/60 text-stone"}`}>
+      {status}
+    </span>
+  );
+}
+
+function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
+  const queryClient = useQueryClient();
+  const [recipientDraft, setRecipientDraft] = useState<string | null>(null);
+
+  const { data, isLoading, error } = useQuery<ReportSettingsResponse>({
+    queryKey: ["tools-consignor-report-settings"],
+    queryFn: () => safeFetch<ReportSettingsResponse>(REPORT_BASE),
+  });
+
+  const patchMutation = useMutation({
+    mutationFn: async (patch: Record<string, unknown>) => {
+      const res = await fetch(REPORT_BASE, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to update report settings");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tools-consignor-report-settings"] });
+      setRecipientDraft(null);
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(REPORT_RUN_URL, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Send failed");
+      }
+      return res.json();
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["tools-consignor-report-settings"] }),
+  });
+
+  if (isLoading) return <Skeleton className="mt-4 h-[280px] rounded-xl" />;
+  if (error || !data?.process) {
+    return <PanelError className="mt-4" label="Failed to load report settings — try refreshing" />;
+  }
+
+  const { process: def, latestRun } = data;
+  const savedRecipient = def.config.recipient_email ?? "";
+  const recipient = recipientDraft ?? savedRecipient;
+  const recipientValid = EMAIL_SHAPE.test(recipient);
+  const recipientDirty = recipientDraft !== null && recipientDraft !== savedRecipient;
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="rounded-xl border border-sand bg-warmwhite p-5">
+        {!isHubAdmin && (
+          <p className="mb-4 rounded-lg bg-cream px-3 py-2 text-xs text-bark">
+            Read-only — changing these settings requires Hub Admin.
+          </p>
+        )}
+
+        <div className="border-b border-sand py-3.5">
+          <p className="mb-1.5 text-sm text-soil">Send to</p>
+          <div className="flex gap-2">
+            <Input
+              value={recipient}
+              disabled={!isHubAdmin}
+              onChange={(e) => setRecipientDraft(e.target.value)}
+              placeholder="name@mackaysmarketing.com.au"
+              className="max-w-xs border-sand bg-white"
+            />
+            {isHubAdmin && recipientDirty && (
+              <Button
+                size="sm"
+                className="bg-canopy text-white hover:bg-canopy/90"
+                disabled={!recipientValid || patchMutation.isPending}
+                onClick={() =>
+                  patchMutation.mutate({ config: { ...def.config, recipient_email: recipient } })
+                }
+              >
+                Save
+              </Button>
+            )}
+          </div>
+          {recipientDirty && !recipientValid && (
+            <p className="mt-1.5 text-xs text-blaze">Doesn&apos;t look like a valid email address.</p>
+          )}
+        </div>
+
+        <Row label="Send" hint="Brisbane time (fixed UTC+10, no DST)">
+          <select
+            disabled={!isHubAdmin}
+            value={scheduleToOption(def.config.schedule)}
+            onChange={(e) =>
+              patchMutation.mutate({
+                config: { ...def.config, schedule: optionToSchedule(e.target.value) },
+              })
+            }
+            className="h-9 w-[220px] rounded-lg border border-sand bg-white px-2 text-sm disabled:opacity-60"
+          >
+            {FREQUENCY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Row>
+
+        <div className="flex items-center justify-between py-3.5">
+          <div>
+            <p className="text-sm text-soil">{def.enabled ? "Reports are on" : "Reports are off"}</p>
+            <p className="text-xs text-stone">
+              {def.enabled
+                ? "Sends automatically on the schedule above, and can be sent on demand below."
+                : 'Turn on to start sending, and to enable "Send test email now".'}
+            </p>
+          </div>
+          {isHubAdmin && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={def.enabled ? "border-stone/40 text-stone" : "border-canopy/40 text-canopy"}
+              disabled={patchMutation.isPending}
+              onClick={() => patchMutation.mutate({ enabled: !def.enabled })}
+            >
+              {def.enabled ? "Turn off" : "Turn on"}
+            </Button>
+          )}
+        </div>
+
+        {isHubAdmin && (
+          <div className="flex items-center justify-between border-t border-sand pt-3.5">
+            <p className="text-xs text-bark">
+              {!def.enabled
+                ? "Enable reports above to send a test email."
+                : "Sends immediately with the latest data — separate from the schedule."}
+            </p>
+            <Button
+              size="sm"
+              className="bg-canopy text-white hover:bg-canopy/90"
+              disabled={testMutation.isPending || !def.enabled}
+              onClick={() => testMutation.mutate()}
+            >
+              {testMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Mail className="h-4 w-4" />
+              )}
+              Send test email now
+            </Button>
+          </div>
+        )}
+
+        {(patchMutation.isError || testMutation.isError) && (
+          <p className="mt-3 text-xs text-blaze">
+            {patchMutation.error?.message ?? testMutation.error?.message}
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-sand bg-warmwhite p-5">
+        <h3 className="mb-3 text-sm font-semibold text-soil">Last send</h3>
+        {!latestRun ? (
+          <p className="text-xs text-stone">No reports have been sent yet.</p>
+        ) : (
+          <div className="space-y-1.5 text-xs text-bark">
+            <div className="flex items-center gap-2">
+              <RunStatusBadge status={latestRun.status} />
+              <span>
+                {new Date(latestRun.started_at).toLocaleString("en-AU")} ({latestRun.trigger})
+              </span>
+            </div>
+            {latestRun.payload && (
+              <p>
+                Sent to {String(latestRun.payload.recipient ?? "—")} ·{" "}
+                {String(latestRun.payload.needs_attention_count ?? 0)} needing a decision ·{" "}
+                {String(latestRun.payload.failures_count ?? 0)} failed writes
+              </p>
+            )}
+            {latestRun.error && <p className="text-blaze">{latestRun.error}</p>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
