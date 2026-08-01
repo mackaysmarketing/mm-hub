@@ -19,6 +19,13 @@ import { runProcess } from "@/lib/processes/registry";
 import { parseSchedule, isRunDue } from "@/lib/processes/schedule";
 
 export const dynamic = "force-dynamic";
+// Belt-and-braces alongside the no-store fetch in createAdminClient(): this
+// route reads its schedule/mode/enabled state from process_definitions and
+// must never see a cached snapshot of it. `dynamic` alone does not opt fetches
+// out of the Data Cache, and unlike the UI routes this one never calls a
+// dynamic function (it reads request.headers, not headers()), so it gets no
+// implicit opt-out either.
+export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
