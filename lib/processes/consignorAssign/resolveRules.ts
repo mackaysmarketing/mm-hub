@@ -39,6 +39,10 @@ export interface InvalidRule {
 export interface ResolvedRules {
   validRules: AssignmentRule[];
   invalidRules: InvalidRule[];
+  // consignee ROLE id -> display name (FreshTrack orgName), for populating
+  // process_actions.consignee_name — built from the SAME entities fetch used
+  // for validation, so it costs nothing extra.
+  consigneeNameById: Map<string, string>;
 }
 
 export async function resolveRules(): Promise<ResolvedRules> {
@@ -52,7 +56,9 @@ export async function resolveRules(): Promise<ResolvedRules> {
   if (error) throw new Error(`resolveRules: load rules: ${error.message}`);
 
   const rows = (data ?? []) as RuleRow[];
-  if (rows.length === 0) return { validRules: [], invalidRules: [] };
+  if (rows.length === 0) {
+    return { validRules: [], invalidRules: [], consigneeNameById: new Map() };
+  }
 
   const entitiesRes = await gqlQuery<RspEntities>(
     Q_ENTITIES_FOR_RULE_VALIDATION,
@@ -61,9 +67,13 @@ export async function resolveRules(): Promise<ResolvedRules> {
 
   const consignorActiveById = new Map<string, boolean>();
   const consigneeExists = new Set<string>();
+  const consigneeNameById = new Map<string, string>();
   for (const e of entitiesRes.entities) {
     if (e.consignorId) consignorActiveById.set(e.consignorId, e.isConsignorActive);
-    if (e.consigneeId) consigneeExists.add(e.consigneeId);
+    if (e.consigneeId) {
+      consigneeExists.add(e.consigneeId);
+      if (e.orgName) consigneeNameById.set(e.consigneeId, e.orgName);
+    }
   }
 
   const validRules: AssignmentRule[] = [];
@@ -106,5 +116,5 @@ export async function resolveRules(): Promise<ResolvedRules> {
     });
   }
 
-  return { validRules, invalidRules };
+  return { validRules, invalidRules, consigneeNameById };
 }

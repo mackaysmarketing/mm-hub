@@ -59,7 +59,7 @@ export async function runConsignorAutoAssign(ctx: {
       : DEFAULT_HORIZON_DAYS;
 
   // Step 2: load + validate rules against LIVE FreshTrack.
-  const { validRules, invalidRules } = await resolveRules();
+  const { validRules, invalidRules, consigneeNameById } = await resolveRules();
   const partial = invalidRules.length > 0;
   const invalidRulesPayload = invalidRules.map((r) => ({
     code: r.rule.consignee_entity_code,
@@ -142,6 +142,9 @@ export async function runConsignorAutoAssign(ctx: {
       targetType: "freshtrack_order",
       targetId: candidate.id,
       targetRef: candidate.orderNo,
+      consigneeName: candidate.consigneeId
+        ? (consigneeNameById.get(candidate.consigneeId) ?? null)
+        : null,
       action: "set_consignor" as const,
       before: { consignor_ft_id: null },
     };
