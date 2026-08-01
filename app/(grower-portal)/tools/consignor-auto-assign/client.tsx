@@ -41,6 +41,7 @@ import {
 import { PanelError } from "@/components/panel-error";
 import { safeFetch } from "@/lib/portal-constants";
 import { validateRecipients } from "@/lib/processes/runReport/recipients";
+import { parseSchedule, describeSchedule } from "@/lib/processes/schedule";
 
 const BASE = "/api/tools/consignor-auto-assign";
 const RUN_URL = "/api/processes/consignor_auto_assign/run";
@@ -888,13 +889,23 @@ function scheduleToOption(schedule?: SettingsResponse["config"]["schedule"]): st
   if (schedule.frequency === "hourly") return "hourly";
   if (schedule.frequency === "every_n_hours" && schedule.n === 4) return "every_4h";
   if (schedule.frequency === "daily" && schedule.at_hour_brisbane === 0) return "daily_midnight";
-  return "every_4h";
+  // Doesn't match one of the 3 presets below (e.g. "daily at 7am", "every 6
+  // hours") — must NOT silently fall back to a preset, or picking anything
+  // in the dropdown (even re-selecting what looks selected) would silently
+  // overwrite the real schedule with the wrong one.
+  return "custom";
 }
 
 function optionToSchedule(option: string): SettingsResponse["config"]["schedule"] {
   if (option === "hourly") return { frequency: "hourly" };
   if (option === "daily_midnight") return { frequency: "daily", at_hour_brisbane: 0 };
   return { frequency: "every_n_hours", n: 4 };
+}
+
+/** Plain-English label for a schedule that isn't one of the 3 dropdown presets. */
+function customScheduleLabel(schedule?: SettingsResponse["config"]["schedule"]): string {
+  const parsed = parseSchedule(schedule);
+  return parsed ? `Custom (${describeSchedule(parsed)})` : "Custom";
 }
 
 function ScheduleTab({ isHubAdmin }: { isHubAdmin: boolean }) {
@@ -980,6 +991,11 @@ function ScheduleTab({ isHubAdmin }: { isHubAdmin: boolean }) {
           }
           className="h-9 w-[220px] rounded-lg border border-sand bg-white px-2 text-sm disabled:opacity-60"
         >
+          {scheduleToOption(data.config.schedule) === "custom" && (
+            <option value="custom" disabled>
+              {customScheduleLabel(data.config.schedule)}
+            </option>
+          )}
           {FREQUENCY_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -1170,6 +1186,11 @@ function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
             }
             className="h-9 w-[220px] rounded-lg border border-sand bg-white px-2 text-sm disabled:opacity-60"
           >
+            {scheduleToOption(def.config.schedule) === "custom" && (
+              <option value="custom" disabled>
+                {customScheduleLabel(def.config.schedule)}
+              </option>
+            )}
             {FREQUENCY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
