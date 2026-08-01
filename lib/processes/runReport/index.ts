@@ -16,6 +16,7 @@
 import "server-only";
 import { queryReportData } from "./queryReportData";
 import { buildReportSubject, renderReportHtml } from "./emailTemplate";
+import { validateRecipients } from "./recipients";
 import { sendEmail } from "@/lib/resend";
 import type { RunSummary, ProcessMode } from "../runner";
 
@@ -35,21 +36,28 @@ export async function runConsignorReport(ctx: {
   mode: ProcessMode;
   config: Record<string, unknown>;
 }): Promise<RunResult> {
-  const recipient =
+  const rawRecipients =
     typeof ctx.config.recipient_email === "string" ? ctx.config.recipient_email : null;
-  if (!recipient) {
+  if (!rawRecipients) {
     throw new Error("consignor_auto_assign_report.config.recipient_email is not set");
   }
+  const validation = validateRecipients(rawRecipients);
+  if (!validation.valid) {
+    throw new Error(
+      `consignor_auto_assign_report.config.recipient_email is invalid: ${validation.error}`
+    );
+  }
+  const recipients = validation.emails;
 
   const model = await queryReportData();
   const subject = buildReportSubject(model);
   const html = renderReportHtml(model);
-  const sent = await sendEmail({ to: recipient, subject, html });
+  const sent = await sendEmail({ to: recipients, subject, html });
 
   return {
     ...EMPTY_COUNTS,
     payload: {
-      recipient,
+      recipient: recipients.join(", "),
       subject,
       message_id: sent.id,
       needs_attention_count: model.needsAttention.length,
