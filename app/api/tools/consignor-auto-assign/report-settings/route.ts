@@ -10,10 +10,10 @@ import { getUserSession } from "@/lib/auth";
 import { getPortalAccessContext, hasMenuAccess } from "@/lib/portal-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseSchedule } from "@/lib/processes/schedule";
+import { validateRecipients } from "@/lib/processes/runReport/recipients";
 
 export const dynamic = "force-dynamic";
 const PROCESS_KEY = "consignor_auto_assign_report";
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function GET() {
   const accessCtx = await getPortalAccessContext();
@@ -67,9 +67,16 @@ export async function PATCH(request: Request) {
 
   if ("config" in body) {
     const config = (body.config ?? {}) as Record<string, unknown>;
-    if (typeof config.recipient_email !== "string" || !EMAIL_SHAPE.test(config.recipient_email)) {
+    if (typeof config.recipient_email !== "string") {
       return NextResponse.json(
-        { error: "'config.recipient_email' must be a valid email address" },
+        { error: "'config.recipient_email' must be a string" },
+        { status: 400 }
+      );
+    }
+    const recipientCheck = validateRecipients(config.recipient_email);
+    if (!recipientCheck.valid) {
+      return NextResponse.json(
+        { error: `'config.recipient_email' ${recipientCheck.error}` },
         { status: 400 }
       );
     }

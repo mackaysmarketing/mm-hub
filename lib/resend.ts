@@ -15,7 +15,7 @@ export class ResendConfigError extends Error {}
 export class ResendSendError extends Error {}
 
 export interface SendEmailInput {
-  to: string;
+  to: string[]; // one or more recipient addresses
   subject: string;
   html: string;
 }
@@ -42,7 +42,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     },
     body: JSON.stringify({
       from,
-      to: [input.to],
+      to: input.to,
       subject: input.subject,
       html: input.html,
     }),

@@ -40,12 +40,12 @@ import {
 } from "@/components/ui/dialog";
 import { PanelError } from "@/components/panel-error";
 import { safeFetch } from "@/lib/portal-constants";
+import { validateRecipients } from "@/lib/processes/runReport/recipients";
 
 const BASE = "/api/tools/consignor-auto-assign";
 const RUN_URL = "/api/processes/consignor_auto_assign/run";
 const REPORT_BASE = `${BASE}/report-settings`;
 const REPORT_RUN_URL = "/api/processes/consignor_auto_assign_report/run";
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // --------------------------------------------------------------- shared types
 
@@ -1115,7 +1115,7 @@ function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
   const { process: def, latestRun } = data;
   const savedRecipient = def.config.recipient_email ?? "";
   const recipient = recipientDraft ?? savedRecipient;
-  const recipientValid = EMAIL_SHAPE.test(recipient);
+  const recipientCheck = validateRecipients(recipient);
   const recipientDirty = recipientDraft !== null && recipientDraft !== savedRecipient;
 
   return (
@@ -1134,14 +1134,14 @@ function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
               value={recipient}
               disabled={!isHubAdmin}
               onChange={(e) => setRecipientDraft(e.target.value)}
-              placeholder="name@mackaysmarketing.com.au"
-              className="max-w-xs border-sand bg-white"
+              placeholder="name@mackaysmarketing.com.au, another@mackaysmarketing.com.au"
+              className="max-w-md border-sand bg-white"
             />
             {isHubAdmin && recipientDirty && (
               <Button
                 size="sm"
                 className="bg-canopy text-white hover:bg-canopy/90"
-                disabled={!recipientValid || patchMutation.isPending}
+                disabled={!recipientCheck.valid || patchMutation.isPending}
                 onClick={() =>
                   patchMutation.mutate({ config: { ...def.config, recipient_email: recipient } })
                 }
@@ -1150,8 +1150,12 @@ function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
               </Button>
             )}
           </div>
-          {recipientDirty && !recipientValid && (
-            <p className="mt-1.5 text-xs text-blaze">Doesn&apos;t look like a valid email address.</p>
+          {recipientDirty && !recipientCheck.valid ? (
+            <p className="mt-1.5 text-xs text-blaze">{recipientCheck.error}.</p>
+          ) : (
+            <p className="mt-1.5 text-xs text-stone">
+              Separate multiple addresses with a comma or semicolon.
+            </p>
           )}
         </div>
 
