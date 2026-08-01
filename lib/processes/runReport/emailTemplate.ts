@@ -12,7 +12,7 @@
  * components directly.
  */
 
-const COLOR = {
+export const COLOR = {
   forest: "#172E24",
   canopy: "#1A5C34",
   canopyLight: "#2D5E43",
@@ -76,7 +76,7 @@ export interface ReportModel {
   hubUrl: string;
 }
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

@@ -136,6 +136,7 @@ interface ReportSettingsResponse {
     config: {
       recipient_email?: string;
       schedule?: SettingsResponse["config"]["schedule"];
+      alert_on_conflicts?: boolean;
     };
     updated_at: string;
   } | null;
@@ -1117,6 +1118,9 @@ function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
   const recipient = recipientDraft ?? savedRecipient;
   const recipientCheck = validateRecipients(recipient);
   const recipientDirty = recipientDraft !== null && recipientDraft !== savedRecipient;
+  // Absent means on — the alert is a safety net, so it has to be switched off
+  // deliberately rather than by omission. Mirrors conflictAlert.ts.
+  const alertsOn = def.config.alert_on_conflicts !== false;
 
   return (
     <div className="mt-4 space-y-4">
@@ -1196,6 +1200,35 @@ function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
               onClick={() => patchMutation.mutate({ enabled: !def.enabled })}
             >
               {def.enabled ? "Turn off" : "Turn on"}
+            </Button>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-sand py-3.5">
+          <div className="pr-4">
+            <p className="text-sm text-soil">
+              {alertsOn ? "Conflict alerts are on" : "Conflict alerts are off"}
+            </p>
+            <p className="text-xs text-stone">
+              {alertsOn
+                ? "Emails the same recipients as soon as a run finds an order the rules can't resolve. Only new orders — a conflict already reported isn't sent again."
+                : "Conflicted orders will only appear in the scheduled summary above."}{" "}
+              Independent of the summary schedule and of whether reports are on.
+            </p>
+          </div>
+          {isHubAdmin && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={alertsOn ? "border-stone/40 text-stone" : "border-canopy/40 text-canopy"}
+              disabled={patchMutation.isPending}
+              onClick={() =>
+                patchMutation.mutate({
+                  config: { ...def.config, alert_on_conflicts: !alertsOn },
+                })
+              }
+            >
+              {alertsOn ? "Turn off" : "Turn on"}
             </Button>
           )}
         </div>
