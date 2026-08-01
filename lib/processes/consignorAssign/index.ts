@@ -23,7 +23,7 @@ import {
   type FTProductMini,
 } from "@/lib/freshtrack/queries";
 import { resolveRules } from "./resolveRules";
-import { hasCropSpecificRule, matchOrder } from "./matchOrder";
+import { needsCropResolution, matchOrder } from "./matchOrder";
 import { checkOrderGuards } from "./guards";
 import { applyConsignor } from "./apply";
 import { logAction, type RunSummary, type ProcessMode } from "../runner";
@@ -59,7 +59,7 @@ export async function runConsignorAutoAssign(ctx: {
       : DEFAULT_HORIZON_DAYS;
 
   // Step 2: load + validate rules against LIVE FreshTrack.
-  const { validRules, invalidRules } = await resolveRules();
+  const { validRules, invalidRules, consigneeNameById } = await resolveRules();
   const partial = invalidRules.length > 0;
   const invalidRulesPayload = invalidRules.map((r) => ({
     code: r.rule.consignee_entity_code,
@@ -88,9 +88,38 @@ export async function runConsignorAutoAssign(ctx: {
   // Step 3: discovery — live FreshTrack, scoped to consignees with an active
   // rule, never ft_orders (design doc §4 — decouples this process's freshness
   // from orderSync's once-nightly cadence).
+  //
+  // IMPORTANT (migration 00018): a global crop rule has consigneeFreshtrackId
+  // === null and contributes NO new consignee to this list — it only changes
+  // the OUTCOME for crops present on orders belonging to customers who are
+  // discovered via some OTHER (non-null-consignee) rule. A customer with
+  // literally no rule of their own still won't be found here, even though a
+  // global rule would apply to them once discovered. Filter nulls out before
+  // they ever reach filterConsigneeIds, which expects real UUIDs.
   const consigneeIds = Array.from(
-    new Set(validRules.map((r) => r.consigneeFreshtrackId))
+    new Set(
+      validRules
+        .map((r) => r.consigneeFreshtrackId)
+        .filter((id): id is string => id !== null)
+    )
   );
+  if (consigneeIds.length === 0) {
+    // Only global rules are active — nothing drives discovery. Surface this
+    // clearly rather than silently discovering zero candidates every run.
+    return {
+      candidatesSeen: 0,
+      actionsProposed: 0,
+      actionsApplied: 0,
+      actionsSkipped: 0,
+      actionsFailed: 0,
+      partial: true,
+      payload: {
+        invalid_rules: invalidRulesPayload,
+        warning:
+          "Only global (any-customer) rules are active — none of them drive discovery on their own. Add at least one customer-specific rule so orders are found at all.",
+      },
+    };
+  }
   const discoveryRes = await gqlQuery<RspOrderCandidates>(Q_ORDERS_BY_CONSIGNEES, {
     consigneeIds,
     limit: DISCOVERY_LIMIT,
@@ -113,6 +142,9 @@ export async function runConsignorAutoAssign(ctx: {
       targetType: "freshtrack_order",
       targetId: candidate.id,
       targetRef: candidate.orderNo,
+      consigneeName: candidate.consigneeId
+        ? (consigneeNameById.get(candidate.consigneeId) ?? null)
+        : null,
       action: "set_consignor" as const,
       before: { consignor_ft_id: null },
     };
@@ -140,11 +172,12 @@ export async function runConsignorAutoAssign(ctx: {
       continue;
     }
 
-    // Step 4a: crop resolution, lazy — only for consignees with a
-    // crop-specific rule (COLEC today). Crop-agnostic customers (9 of 10)
-    // never pay these 2 extra calls.
+    // Step 4a: crop resolution, lazy — only when it could actually affect the
+    // outcome (a customer-specific crop rule, OR any global crop rule at all
+    // — migration 00018). Customers untouched by either never pay these 2
+    // extra calls.
     let cropIds: string[] | null = null;
-    if (hasCropSpecificRule(validRules, candidate.consigneeId)) {
+    if (needsCropResolution(validRules, candidate.consigneeId)) {
       if (cropResolutionsUsed >= MAX_CROP_RESOLUTIONS_PER_RUN) {
         skipped++;
         await logAction({

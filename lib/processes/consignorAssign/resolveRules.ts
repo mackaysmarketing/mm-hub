@@ -22,8 +22,9 @@ const ENTITY_FETCH_LIMIT = 1000;
 
 export interface RuleRow {
   id: string;
-  consignee_entity_code: string;
-  consignee_freshtrack_id: string;
+  // null = any customer (global crop rule) — migration 00018.
+  consignee_entity_code: string | null;
+  consignee_freshtrack_id: string | null;
   crop_id: string | null;
   crop_name: string | null;
   consignor_entity_code: string;
@@ -38,6 +39,10 @@ export interface InvalidRule {
 export interface ResolvedRules {
   validRules: AssignmentRule[];
   invalidRules: InvalidRule[];
+  // consignee ROLE id -> display name (FreshTrack orgName), for populating
+  // process_actions.consignee_name — built from the SAME entities fetch used
+  // for validation, so it costs nothing extra.
+  consigneeNameById: Map<string, string>;
 }
 
 export async function resolveRules(): Promise<ResolvedRules> {
@@ -51,7 +56,9 @@ export async function resolveRules(): Promise<ResolvedRules> {
   if (error) throw new Error(`resolveRules: load rules: ${error.message}`);
 
   const rows = (data ?? []) as RuleRow[];
-  if (rows.length === 0) return { validRules: [], invalidRules: [] };
+  if (rows.length === 0) {
+    return { validRules: [], invalidRules: [], consigneeNameById: new Map() };
+  }
 
   const entitiesRes = await gqlQuery<RspEntities>(
     Q_ENTITIES_FOR_RULE_VALIDATION,
@@ -60,16 +67,25 @@ export async function resolveRules(): Promise<ResolvedRules> {
 
   const consignorActiveById = new Map<string, boolean>();
   const consigneeExists = new Set<string>();
+  const consigneeNameById = new Map<string, string>();
   for (const e of entitiesRes.entities) {
     if (e.consignorId) consignorActiveById.set(e.consignorId, e.isConsignorActive);
-    if (e.consigneeId) consigneeExists.add(e.consigneeId);
+    if (e.consigneeId) {
+      consigneeExists.add(e.consigneeId);
+      if (e.orgName) consigneeNameById.set(e.consigneeId, e.orgName);
+    }
   }
 
   const validRules: AssignmentRule[] = [];
   const invalidRules: InvalidRule[] = [];
 
   for (const row of rows) {
-    if (!consigneeExists.has(row.consignee_freshtrack_id)) {
+    // A global rule (consignee_freshtrack_id null) has no consignee to
+    // validate — skip straight to the consignor check.
+    if (
+      row.consignee_freshtrack_id &&
+      !consigneeExists.has(row.consignee_freshtrack_id)
+    ) {
       invalidRules.push({
         rule: row,
         reason: `consignee ${row.consignee_entity_code} not found live`,
@@ -100,5 +116,5 @@ export async function resolveRules(): Promise<ResolvedRules> {
     });
   }
 
-  return { validRules, invalidRules };
+  return { validRules, invalidRules, consigneeNameById };
 }
