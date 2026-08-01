@@ -13,6 +13,7 @@ import {
   type RunSummary,
 } from "./runner";
 import { runConsignorAutoAssign } from "./consignorAssign";
+import { runConsignorReport } from "./runReport";
 
 export interface ProcessRunFn {
   (ctx: {
@@ -25,6 +26,7 @@ export interface ProcessRunFn {
 
 const REGISTRY: Record<string, ProcessRunFn> = {
   consignor_auto_assign: runConsignorAutoAssign,
+  consignor_auto_assign_report: runConsignorReport,
 };
 
 export interface RunProcessResult {

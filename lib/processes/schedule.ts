@@ -43,6 +43,22 @@ export function isRunDue(schedule: ProcessSchedule, nowUtc: Date): boolean {
   }
 }
 
+/** Human-readable rendering of a schedule — admin UI copy and email reports. */
+export function describeSchedule(schedule: ProcessSchedule): string {
+  switch (schedule.frequency) {
+    case "hourly":
+      return "hourly";
+    case "every_n_hours":
+      return schedule.n === 1 ? "hourly" : `every ${schedule.n} hours`;
+    case "daily": {
+      const h = schedule.at_hour_brisbane;
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      const suffix = h < 12 ? "am" : "pm";
+      return `daily at ${h12}${suffix} Brisbane time`;
+    }
+  }
+}
+
 /** Narrow an arbitrary jsonb value into a ProcessSchedule, or null if malformed. */
 export function parseSchedule(raw: unknown): ProcessSchedule | null {
   if (!raw || typeof raw !== "object") return null;

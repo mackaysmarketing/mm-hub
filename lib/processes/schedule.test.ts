@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { brisbaneHour, isRunDue, parseSchedule } from "./schedule";
+import { brisbaneHour, isRunDue, parseSchedule, describeSchedule } from "./schedule";
 
 // Brisbane = UTC+10, no DST — 00:00 UTC is 10:00 Brisbane.
 function utc(hour: number): Date {
@@ -74,5 +74,31 @@ describe("parseSchedule", () => {
     expect(parseSchedule({ frequency: "daily", at_hour_brisbane: 25 })).toBeNull();
     expect(parseSchedule({ frequency: "daily", at_hour_brisbane: -1 })).toBeNull();
     expect(parseSchedule({ frequency: "every_n_hours" })).toBeNull(); // missing n
+  });
+});
+
+describe("describeSchedule", () => {
+  it("renders hourly plainly", () => {
+    expect(describeSchedule({ frequency: "hourly" })).toBe("hourly");
+  });
+
+  it("renders every_n_hours, collapsing n=1 to 'hourly'", () => {
+    expect(describeSchedule({ frequency: "every_n_hours", n: 4 })).toBe("every 4 hours");
+    expect(describeSchedule({ frequency: "every_n_hours", n: 1 })).toBe("hourly");
+  });
+
+  it("renders daily with 12-hour Brisbane time, including the midnight/midday edge cases", () => {
+    expect(describeSchedule({ frequency: "daily", at_hour_brisbane: 0 })).toBe(
+      "daily at 12am Brisbane time"
+    );
+    expect(describeSchedule({ frequency: "daily", at_hour_brisbane: 7 })).toBe(
+      "daily at 7am Brisbane time"
+    );
+    expect(describeSchedule({ frequency: "daily", at_hour_brisbane: 12 })).toBe(
+      "daily at 12pm Brisbane time"
+    );
+    expect(describeSchedule({ frequency: "daily", at_hour_brisbane: 19 })).toBe(
+      "daily at 7pm Brisbane time"
+    );
   });
 });
