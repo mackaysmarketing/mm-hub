@@ -26,6 +26,7 @@ import { resolveRules } from "./resolveRules";
 import { needsCropResolution, matchOrder } from "./matchOrder";
 import { checkOrderGuards } from "./guards";
 import { applyConsignor } from "./apply";
+import { maybeSendConflictAlert, type ConflictCandidate } from "./conflictAlert";
 import { logAction, type RunSummary, type ProcessMode } from "../runner";
 
 const DEFAULT_LOOKBACK_DAYS = 3;
@@ -134,6 +135,10 @@ export async function runConsignorAutoAssign(ctx: {
   let failed = 0;
   let cropResolutionsUsed = 0;
   let productCache: Map<string, FTProductMini> | null = null;
+  // Orders this run could not assign because the rules gave no single answer.
+  // Collected here rather than re-queried from process_actions afterwards —
+  // everything needed is already in hand at the point we log the skip.
+  const conflicts: ConflictCandidate[] = [];
 
   for (const candidate of candidates) {
     const base = {
@@ -206,6 +211,12 @@ export async function runConsignorAutoAssign(ctx: {
         skipReason: "no_rule_matched",
         after: {},
       });
+      conflicts.push({
+        targetId: base.targetId,
+        targetRef: base.targetRef,
+        consigneeName: base.consigneeName,
+        skipReason: "no_rule_matched",
+      });
       continue;
     }
     if (match.kind === "ambiguous") {
@@ -215,6 +226,12 @@ export async function runConsignorAutoAssign(ctx: {
         status: "skipped",
         skipReason: "ambiguous_multi_crop",
         after: { candidate_rule_ids: match.candidateRuleIds },
+      });
+      conflicts.push({
+        targetId: base.targetId,
+        targetRef: base.targetRef,
+        consigneeName: base.consigneeName,
+        skipReason: "ambiguous_multi_crop",
       });
       continue;
     }
@@ -263,6 +280,10 @@ export async function runConsignorAutoAssign(ctx: {
     }
   }
 
+  // Runs last, and cannot throw — a Resend outage must not turn a run that
+  // wrote to FreshTrack into a failed one. Outcome goes in the payload.
+  const conflictAlert = await maybeSendConflictAlert({ runId, mode, conflicts });
+
   return {
     candidatesSeen: candidates.length,
     actionsProposed: proposed,
@@ -279,6 +300,7 @@ export async function runConsignorAutoAssign(ctx: {
         start: deliveryStart.toISOString(),
         end: deliveryEnd.toISOString(),
       },
+      ...(conflictAlert ? { conflict_alert: conflictAlert } : {}),
     },
   };
 }

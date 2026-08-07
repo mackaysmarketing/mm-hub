@@ -11,6 +11,7 @@
  * before the very first report has ever gone out).
  */
 import { parseSchedule, describeSchedule } from "../schedule";
+import { decisionReasonLabel } from "../consignorAssign/decisionReasons";
 import type {
   ReportModel,
   RuleHealthIssue,
@@ -21,10 +22,7 @@ import type {
 
 export const HUB_URL = "https://hub.mackaysmarketing.com.au/tools/consignor-auto-assign";
 
-const REASON_LABELS: Record<string, string> = {
-  ambiguous_multi_crop: "Mixed crops, different consignors",
-  no_rule_matched: "No matching rule",
-};
+// Labels shared with the per-run conflict alert — see decisionReasons.ts.
 
 export const DEFAULT_LOOKBACK_DAYS = 7; // only used before the very first report has ever sent
 
@@ -138,7 +136,7 @@ export function buildReportModel(raw: RawReportData, hubUrl: string = HUB_URL): 
   const needsAttention: NeedsAttentionItem[] = raw.currentAttention.map((row) => ({
     orderRef: row.targetRef ?? row.targetId,
     consigneeName: row.consigneeName,
-    reasonLabel: REASON_LABELS[row.skipReason ?? ""] ?? row.skipReason ?? "Unknown reason",
+    reasonLabel: decisionReasonLabel(row.skipReason),
     seenInRuns: seenCounts.get(row.targetId) ?? 1,
   }));
 

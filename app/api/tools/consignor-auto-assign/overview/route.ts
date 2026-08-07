@@ -10,11 +10,11 @@ import { NextResponse } from "next/server";
 import { getPortalAccessContext, hasMenuAccess } from "@/lib/portal-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveRules } from "@/lib/processes/consignorAssign/resolveRules";
+import { DECISION_SKIP_REASONS } from "@/lib/processes/consignorAssign/decisionReasons";
 
 export const dynamic = "force-dynamic";
 
 const PROCESS_KEY = "consignor_auto_assign";
-const DECISION_SKIP_REASONS = ["ambiguous_multi_crop", "no_rule_matched"];
 
 export async function GET() {
   const accessCtx = await getPortalAccessContext();

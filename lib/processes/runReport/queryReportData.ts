@@ -7,6 +7,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveRules } from "../consignorAssign/resolveRules";
+import { DECISION_SKIP_REASONS } from "../consignorAssign/decisionReasons";
 import {
   resolvePeriodBoundary,
   buildReportModel,
@@ -20,12 +21,8 @@ import type { ReportModel, RuleHealthIssue } from "./emailTemplate";
 const ASSIGN_PROCESS_KEY = "consignor_auto_assign";
 const REPORT_PROCESS_KEY = "consignor_auto_assign_report";
 
-// Orders skipped for one of these two reasons are genuine "a human needs to
-// decide" conflicts — mirrors overview/route.ts's DECISION_SKIP_REASONS.
-// Every other skip reason (no_consignee, guard failures,
-// already_assigned_by_other, the crop-resolution budget cap) is either
-// out-of-scope-for-now or a structural non-issue, not something to action.
-const DECISION_SKIP_REASONS = ["ambiguous_multi_crop", "no_rule_matched"];
+// Shared with the Tools overview endpoint and the per-run conflict alert —
+// see decisionReasons.ts for what qualifies and why.
 
 const ATTENTION_HISTORY_DAYS = 30; // window for the "seen in N runs" repeat count
 
