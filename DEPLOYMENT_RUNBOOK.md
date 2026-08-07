@@ -235,10 +235,29 @@ Set this in Vercel and keep it safe — it protects all `/api/cron/*` endpoints.
 
 Defined in `vercel.json`:
 
-| Job | Path | Schedule | Purpose |
-|-----|------|----------|---------|
-| FreshTrack Sync | `/api/cron/sync-freshtrack` | Every 15 min | Sync entities, products, consignments, orders, pallets, dispatch, charges, stock from FreshTrack RDS |
-| NetSuite Sync | `/api/cron/sync-netsuite` | Every 30 min | Sync RCTIs (remittances + line items + charges) from NetSuite |
+Vercel crons are **UTC-only**. Brisbane is UTC+10 year-round (no DST).
+
+| Job | Path | Cron (UTC) | Schedule | Purpose |
+|-----|------|-----------|----------|---------|
+| FreshTrack Sync | `/api/cron/sync-freshtrack` | `0 6 * * *` | Daily, 4pm Brisbane | Sync entities, products, consignments, orders, pallets, dispatch, charges, stock from FreshTrack RDS |
+| NetSuite Sync | `/api/cron/sync-netsuite` | `0 7 * * *` | Daily, 5pm Brisbane | Sync RCTIs (remittances + line items + charges) from NetSuite |
+| Process tick | `/api/cron/processes` | `*/5 * * * *` | Every 5 min | Ticks the admin-configurable processes (Auto FT Consignor Update and its email report). Runs whichever are enabled and due per their own `config.schedule` |
+
+### The process tick is a floor, not a schedule
+
+`/api/cron/processes` does not itself decide when a process runs — it wakes every
+5 minutes and asks each enabled `process_definitions` row whether it is due
+(`isRunDue`). Admins change a process's own schedule from the Tools UI with no
+redeploy. Two consequences:
+
+- **Nothing can run more often than this tick.** The 5-minute interval is the
+  floor and the step for every schedule the UI offers (5, 10, 15 … 60 min).
+- **`TICK_MINUTES` in `lib/processes/schedule.ts` must equal this cron.** Nothing
+  verifies that at build time. Change both in the same commit, or schedules
+  simply stop becoming due at minutes the tick no longer visits.
+
+Minute-precision crons require a Vercel **Pro** plan; Hobby rejects anything
+more frequent than daily at deploy time.
 
 ### Monitoring Sync Health
 

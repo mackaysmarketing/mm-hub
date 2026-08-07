@@ -4,10 +4,17 @@
  *
  * Vercel crons are UTC-only and defined in vercel.json, which can't be
  * changed without a redeploy — incompatible with the Tools UI's "manage run
- * schedule" ask. So this ONE fixed cron runs hourly and, on each tick, checks
- * every enabled process_definitions row against its OWN config.schedule
- * (isRunDue). Editing the schedule in the UI is then just an update to that
- * jsonb column — no redeploy, no vercel.json change.
+ * schedule" ask. So this ONE fixed cron ticks every 5 minutes and, on each
+ * tick, checks every enabled process_definitions row against its OWN
+ * config.schedule (isRunDue). Editing the schedule in the UI is then just an
+ * update to that jsonb column — no redeploy, no vercel.json change.
+ *
+ * The tick interval is the floor and the step for every schedule the UI can
+ * express: nothing can run more often than the cron fires. It is duplicated as
+ * TICK_MINUTES in lib/processes/schedule.ts, which nothing can verify at build
+ * time — change both together. A tick this frequent is affordable because the
+ * common path is one Supabase select and an early return: work only happens on
+ * the ticks where a process is actually due.
  *
  * "Run now" (app/api/processes/[key]/run) calls the exact same runProcess()
  * function directly, bypassing the schedule check, so a manual run and a
