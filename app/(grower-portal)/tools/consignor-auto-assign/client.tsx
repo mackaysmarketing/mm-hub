@@ -41,6 +41,23 @@ import {
 import { PanelError } from "@/components/panel-error";
 import { safeFetch } from "@/lib/portal-constants";
 import { validateRecipients } from "@/lib/processes/runReport/recipients";
+import {
+  parseSchedule,
+  describeSchedule,
+  intervalWrapGapMinutes,
+  MAX_INTERVAL_MINUTES,
+} from "@/lib/processes/schedule";
+import {
+  scheduleToOption,
+  optionToSchedule,
+  selectedMinutes,
+  fireMinutes,
+  FREQUENCY_OPTIONS,
+  INTERVAL_CHOICES,
+  CUSTOM_MINUTES,
+  UNEDITABLE,
+  type StoredSchedule,
+} from "@/lib/processes/scheduleOptions";
 
 const BASE = "/api/tools/consignor-auto-assign";
 const RUN_URL = "/api/processes/consignor_auto_assign/run";
@@ -115,7 +132,7 @@ interface SettingsResponse {
   enabled: boolean;
   mode: "dry_run" | "apply";
   config: {
-    schedule?: { frequency: string; n?: number; at_hour_brisbane?: number };
+    schedule?: StoredSchedule;
     assignable_state_codes?: string[];
     discovery_lookback_days?: number;
     discovery_horizon_days?: number;
@@ -878,24 +895,88 @@ function ActivityStatusBadge({ status }: { status: string }) {
 
 // --------------------------------------------------------------- Schedule
 
-const FREQUENCY_OPTIONS = [
-  { value: "hourly", label: "Hourly" },
-  { value: "every_4h", label: "Every 4 hours" },
-  { value: "daily_midnight", label: "Daily at midnight (Brisbane)" },
-];
+/**
+ * The schedule control, shared by "Schedule & run" and "Email reports" so the
+ * two can't drift. Markup mirrors <Row> rather than reusing it because the
+ * uneven-cadence warning has to sit under the hint, inside the left column.
+ */
+function ScheduleField({
+  label,
+  schedule,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  schedule?: StoredSchedule;
+  disabled: boolean;
+  onChange: (next: StoredSchedule) => void;
+}) {
+  const option = scheduleToOption(schedule);
+  const parsed = parseSchedule(schedule);
+  const minutes = selectedMinutes(schedule);
+  const wrapGap = option === CUSTOM_MINUTES ? intervalWrapGapMinutes(minutes) : null;
 
-function scheduleToOption(schedule?: SettingsResponse["config"]["schedule"]): string {
-  if (!schedule) return "every_4h";
-  if (schedule.frequency === "hourly") return "hourly";
-  if (schedule.frequency === "every_n_hours" && schedule.n === 4) return "every_4h";
-  if (schedule.frequency === "daily" && schedule.at_hour_brisbane === 0) return "daily_midnight";
-  return "every_4h";
-}
+  return (
+    <div className="flex items-center justify-between border-b border-sand py-3.5 last:border-0">
+      <div className="pr-4">
+        <p className="text-sm text-soil">{label}</p>
+        <p className="text-xs text-stone">
+          {parsed ? `Runs ${describeSchedule(parsed)}` : "Not set"}
+          {/* Minutes past the hour are the same in every timezone — the
+              Brisbane note only means anything for an hour-anchored shape. */}
+          {option !== CUSTOM_MINUTES && " — Brisbane time (fixed UTC+10, no DST)"}
+        </p>
+        {wrapGap !== null && (
+          <p className="mt-1 max-w-[380px] text-xs text-blaze">
+            {minutes} doesn&apos;t divide evenly into an hour — runs at{" "}
+            {fireMinutes(minutes)
+              .map((m) => `:${String(m).padStart(2, "0")}`)
+              .join(", ")}
+            , then only {wrapGap} min before the next hour&apos;s first run.
+          </p>
+        )}
+      </div>
 
-function optionToSchedule(option: string): SettingsResponse["config"]["schedule"] {
-  if (option === "hourly") return { frequency: "hourly" };
-  if (option === "daily_midnight") return { frequency: "daily", at_hour_brisbane: 0 };
-  return { frequency: "every_n_hours", n: 4 };
+      <div className="flex shrink-0 items-center gap-2">
+        <select
+          aria-label={label}
+          disabled={disabled}
+          value={option}
+          onChange={(e) => onChange(optionToSchedule(e.target.value, minutes))}
+          className="h-9 w-[200px] rounded-lg border border-sand bg-white px-2 text-sm disabled:opacity-60"
+        >
+          {option === UNEDITABLE && (
+            <option value={UNEDITABLE} disabled>
+              {parsed ? describeSchedule(parsed) : "Custom"}
+            </option>
+          )}
+          {FREQUENCY_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        {option === CUSTOM_MINUTES && (
+          <select
+            aria-label={`${label} — interval in minutes`}
+            disabled={disabled}
+            value={minutes}
+            onChange={(e) =>
+              onChange({ frequency: "every_n_minutes", n: Number(e.target.value) })
+            }
+            className="h-9 w-[135px] rounded-lg border border-sand bg-white px-2 text-sm disabled:opacity-60"
+          >
+            {INTERVAL_CHOICES.map((n) => (
+              <option key={n} value={n}>
+                {n === MAX_INTERVAL_MINUTES ? `${n} min (hourly)` : `${n} min`}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function ScheduleTab({ isHubAdmin }: { isHubAdmin: boolean }) {
@@ -970,24 +1051,14 @@ function ScheduleTab({ isHubAdmin }: { isHubAdmin: boolean }) {
         </select>
       </Row>
 
-      <Row label="Run at" hint="Brisbane time (fixed UTC+10, no DST)">
-        <select
-          disabled={!isHubAdmin}
-          value={scheduleToOption(data.config.schedule)}
-          onChange={(e) =>
-            patchMutation.mutate({
-              config: { ...data.config, schedule: optionToSchedule(e.target.value) },
-            })
-          }
-          className="h-9 w-[220px] rounded-lg border border-sand bg-white px-2 text-sm disabled:opacity-60"
-        >
-          {FREQUENCY_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </Row>
+      <ScheduleField
+        label="Run at"
+        schedule={data.config.schedule}
+        disabled={!isHubAdmin}
+        onChange={(schedule) =>
+          patchMutation.mutate({ config: { ...data.config, schedule } })
+        }
+      />
 
       <div className="border-b border-sand py-3.5">
         <p className="text-sm text-soil">Assignable states</p>
@@ -1163,24 +1234,14 @@ function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
           )}
         </div>
 
-        <Row label="Send" hint="Brisbane time (fixed UTC+10, no DST)">
-          <select
-            disabled={!isHubAdmin}
-            value={scheduleToOption(def.config.schedule)}
-            onChange={(e) =>
-              patchMutation.mutate({
-                config: { ...def.config, schedule: optionToSchedule(e.target.value) },
-              })
-            }
-            className="h-9 w-[220px] rounded-lg border border-sand bg-white px-2 text-sm disabled:opacity-60"
-          >
-            {FREQUENCY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </Row>
+        <ScheduleField
+          label="Send"
+          schedule={def.config.schedule}
+          disabled={!isHubAdmin}
+          onChange={(schedule) =>
+            patchMutation.mutate({ config: { ...def.config, schedule } })
+          }
+        />
 
         <div className="flex items-center justify-between py-3.5">
           <div>
