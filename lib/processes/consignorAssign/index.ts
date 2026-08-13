@@ -36,6 +36,8 @@ const DISCOVERY_LIMIT = 1000;
 // only ever paid by COLEC-like crop-specific customers, whose real volume is
 // a handful a day, so this should never bind in practice.
 const MAX_CROP_RESOLUTIONS_PER_RUN = 200;
+/** Entity code of the MULTIPLE consignor, for the activity log and alerts. */
+const MULTIPLE_CONSIGNOR_CODE = "MULTI";
 
 type RunResult = Omit<RunSummary, "status"> & { partial?: boolean };
 
@@ -58,6 +60,15 @@ export async function runConsignorAutoAssign(ctx: {
     typeof config.discovery_horizon_days === "number"
       ? config.discovery_horizon_days
       : DEFAULT_HORIZON_DAYS;
+  // The FreshTrack consignor ROLE id of the MULTIPLE entity (code MULTI) — not
+  // its entity id; the two differ, and the rules table stores role ids too.
+  // Absent means Stage A is off and a multi-consignor order is skipped exactly
+  // as it was before, so this stays inert until an admin sets it.
+  const multipleConsignorFtId =
+    typeof config.multiple_consignor_ft_id === "string" &&
+    config.multiple_consignor_ft_id.length > 0
+      ? config.multiple_consignor_ft_id
+      : null;
 
   // Step 2: load + validate rules against LIVE FreshTrack.
   const { validRules, invalidRules, consigneeNameById } = await resolveRules();
@@ -133,6 +144,7 @@ export async function runConsignorAutoAssign(ctx: {
   let applied = 0;
   let skipped = 0;
   let failed = 0;
+  let multipleAssigned = 0;
   let cropResolutionsUsed = 0;
   let productCache: Map<string, FTProductMini> | null = null;
   // Orders this run could not assign because the rules gave no single answer.
@@ -219,53 +231,93 @@ export async function runConsignorAutoAssign(ctx: {
       });
       continue;
     }
-    if (match.kind === "ambiguous") {
+    if (match.kind === "unmapped_crop") {
+      // A crop on this order has NO rule, so its consignor is unknown. That is
+      // not a MULTIPLE — MULTIPLE asserts we know them all — and it stays a
+      // human decision exactly as before.
       skipped++;
       await logAction({
         ...base,
         status: "skipped",
-        skipReason: "ambiguous_multi_crop",
-        after: { candidate_rule_ids: match.candidateRuleIds },
+        skipReason: "unmapped_crop",
+        after: { matched_rule_ids: match.matchedRuleIds },
       });
       conflicts.push({
         targetId: base.targetId,
         targetRef: base.targetRef,
         consigneeName: base.consigneeName,
-        skipReason: "ambiguous_multi_crop",
+        skipReason: "unmapped_crop",
+      });
+      continue;
+    }
+    if (match.kind === "multiple" && !multipleConsignorFtId) {
+      // Unconfigured falls back to the pre-Stage-A behaviour rather than
+      // picking one of the candidates.
+      skipped++;
+      await logAction({
+        ...base,
+        status: "skipped",
+        skipReason: "multiple_not_configured",
+        after: {
+          candidate_rule_ids: match.candidateRuleIds,
+          consignor_codes: match.consignorEntityCodes,
+        },
+      });
+      conflicts.push({
+        targetId: base.targetId,
+        targetRef: base.targetRef,
+        consigneeName: base.consigneeName,
+        skipReason: "multiple_not_configured",
       });
       continue;
     }
 
-    // match.kind === "matched"
-    const rule = match.rule;
+    // Either one rule matched, or every crop resolved to a DIFFERENT consignor
+    // and the header becomes MULTIPLE. Both write one consignor to the order;
+    // only the value and the provenance differ.
+    const isMultiple = match.kind === "multiple";
+    const targetConsignorId = isMultiple
+      ? multipleConsignorFtId!
+      : match.rule.consignorFreshtrackId;
+    const ruleId = isMultiple ? null : match.rule.id;
+    const after = isMultiple
+      ? {
+          consignor_ft_id: targetConsignorId,
+          code: MULTIPLE_CONSIGNOR_CODE,
+          reason: "multiple",
+          candidate_rule_ids: match.candidateRuleIds,
+          consignor_codes: match.consignorEntityCodes,
+        }
+      : {
+          consignor_ft_id: targetConsignorId,
+          code: match.rule.consignorEntityCode,
+        };
+
     proposed++;
-    const after = {
-      consignor_ft_id: rule.consignorFreshtrackId,
-      code: rule.consignorEntityCode,
-    };
+    if (isMultiple) multipleAssigned++;
 
     if (mode === "dry_run") {
       await logAction({
         ...base,
         status: "proposed",
-        ruleId: rule.id,
+        ruleId,
         after,
       });
       continue;
     }
 
     // Step 5: apply — live read-modify-write + post-write diff.
-    const result = await applyConsignor(candidate.id, rule.consignorFreshtrackId);
+    const result = await applyConsignor(candidate.id, targetConsignorId);
     if (result.outcome === "applied") {
       applied++;
-      await logAction({ ...base, status: "applied", ruleId: rule.id, after });
+      await logAction({ ...base, status: "applied", ruleId, after });
     } else if (result.outcome === "already_assigned_by_other") {
       skipped++;
       await logAction({
         ...base,
         status: "skipped",
         skipReason: "already_assigned_by_other",
-        ruleId: rule.id,
+        ruleId,
         after: {},
       });
     } else {
@@ -274,7 +326,7 @@ export async function runConsignorAutoAssign(ctx: {
         ...base,
         status: "failed",
         error: result.error,
-        ruleId: rule.id,
+        ruleId,
         after: {},
       });
     }
@@ -296,6 +348,12 @@ export async function runConsignorAutoAssign(ctx: {
       rules_invalid: invalidRules.length,
       invalid_rules: invalidRulesPayload,
       crop_resolutions_used: cropResolutionsUsed,
+      // Orders whose crops resolved to more than one consignor and so took the
+      // MULTIPLE header. Their LOADS still need per-crop consignors set by
+      // hand — Stage B is not built — so this count is the "how much manual
+      // load work did today create" signal.
+      multiple_assigned: multipleAssigned,
+      multiple_consignor_configured: multipleConsignorFtId !== null,
       discovery_window: {
         start: deliveryStart.toISOString(),
         end: deliveryEnd.toISOString(),

@@ -73,7 +73,9 @@ describe("buildReportModel", () => {
       })
     );
     expect(model.needsAttention.map((a) => a.reasonLabel)).toEqual([
-      "Mixed crops, different consignors",
+      // ambiguous_multi_crop is retired — new runs never write it — but the
+      // historical rows still render a label rather than a raw slug.
+      "Mixed crops, different consignors (pre-MULTIPLE)",
       "No matching rule",
       "some_future_reason",
     ]);

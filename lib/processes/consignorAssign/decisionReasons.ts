@@ -14,13 +14,21 @@
 
 /** Plain string[] rather than a const tuple — PostgREST `.in()` wants a mutable array. */
 export const DECISION_SKIP_REASONS: string[] = [
-  "ambiguous_multi_crop",
+  "unmapped_crop",
+  "multiple_not_configured",
   "no_rule_matched",
+  // Retired by Stage A of the MULTIPLE work: an order whose crops resolve to
+  // different consignors now takes the MULTIPLE header instead of being
+  // skipped. Kept in the list so the ~47 historical rows still surface and
+  // still render a label rather than a raw slug.
+  "ambiguous_multi_crop",
 ];
 
 export const DECISION_REASON_LABELS: Record<string, string> = {
-  ambiguous_multi_crop: "Mixed crops, different consignors",
+  unmapped_crop: "Crop on the order has no rule",
+  multiple_not_configured: "Different consignors, MULTIPLE not configured",
   no_rule_matched: "No matching rule",
+  ambiguous_multi_crop: "Mixed crops, different consignors (pre-MULTIPLE)",
 };
 
 export function decisionReasonLabel(skipReason: string | null): string {

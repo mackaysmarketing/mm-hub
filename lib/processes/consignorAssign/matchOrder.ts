@@ -42,9 +42,26 @@ export function needsCropResolution(
   );
 }
 
+/**
+ * `multiple` and `unmapped_crop` were one `ambiguous` outcome until Stage A of
+ * the MULTIPLE work. They look alike — both mean "not one consignor" — but
+ * they are opposites in the one way that matters:
+ *
+ *   multiple      every crop resolved, they just disagree. We know ALL the
+ *                 consignors, so "MULTIPLE" is a true statement about the
+ *                 order and the loads can be split by hand from here.
+ *   unmapped_crop at least one crop has no rule at all. We do NOT know its
+ *                 consignor, so "MULTIPLE" would be a claim we cannot back —
+ *                 it stays a human decision, exactly as before.
+ *
+ * Unmapped therefore WINS over multiple when both are true: an order with
+ * mapped Papaya, mapped Passionfruit and an unmapped third crop is not a
+ * known-multiple, it is an unknown.
+ */
 export type MatchResult =
   | { kind: "matched"; rule: AssignmentRule }
-  | { kind: "ambiguous"; candidateRuleIds: string[] }
+  | { kind: "multiple"; candidateRuleIds: string[]; consignorEntityCodes: string[] }
+  | { kind: "unmapped_crop"; matchedRuleIds: string[] }
   | { kind: "no_rule" };
 
 /** The four (consignee, crop) lookups tried in precedence order for one crop. */
@@ -99,17 +116,26 @@ export function matchOrder(
 
   if (matchedRules.length === 0) return { kind: "no_rule" }; // every crop present is unmapped
 
-  // A crop present with NO matching rule is just as unsafe to guess through
-  // as two rules disagreeing — e.g. an order with mapped Papaya AND unmapped
-  // Passionfruit lines must not be silently assigned to the Papaya consignor.
-  // Both cases land in the same review queue.
+  // Checked BEFORE the disagreement test, deliberately — see the MatchResult
+  // note. An unmapped crop means we cannot enumerate the consignors, so the
+  // order is not a known-multiple however many of the others resolved.
+  if (anyCropUnmapped) {
+    return { kind: "unmapped_crop", matchedRuleIds: matchedRules.map((r) => r.id) };
+  }
+
   const distinctConsignorIds = new Set(
     matchedRules.map((r) => r.consignorFreshtrackId)
   );
-  if (anyCropUnmapped || distinctConsignorIds.size > 1) {
+  if (distinctConsignorIds.size > 1) {
     return {
-      kind: "ambiguous",
+      kind: "multiple",
       candidateRuleIds: matchedRules.map((r) => r.id),
+      // Sorted + deduped so the activity log and alerts read consistently
+      // regardless of the order crops came back in. Array.from rather than
+      // spread — the tsconfig target predates downlevelIteration on Sets.
+      consignorEntityCodes: Array.from(
+        new Set(matchedRules.map((r) => r.consignorEntityCode))
+      ).sort(),
     };
   }
   return { kind: "matched", rule: matchedRules[0] };

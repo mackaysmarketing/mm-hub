@@ -343,3 +343,77 @@ select count(*) from public.process_runs
 where process_key = 'consignor_auto_assign_report'
   and started_at > now() - interval '24 hours';
 ```
+
+## MULTIPLE consignor header — Stage A (2026-08-13)
+
+An order whose crops resolve to **more than one** consignor now takes a header
+consignor of `MULTIPLE` (FreshTrack entity code `MULTI`) instead of being
+skipped as `ambiguous_multi_crop`. It is a true statement about the order, and
+it stops a wrong single consignor propagating to the loads that inherit from it.
+
+**Stage B — per-crop consignor on each LOAD — is NOT built.** An order with the
+MULTIPLE header still needs its loads split by hand. Find them with:
+
+```sql
+select target_ref, consignee_name, after->>'consignor_codes' as codes, created_at
+from process_actions
+where process_key = 'consignor_auto_assign'
+  and status = 'applied' and after->>'reason' = 'multiple'
+order by created_at desc;
+```
+
+### The distinction that matters
+
+`matchOrder` used to return one `ambiguous` result for two different things.
+They are now separate, and conflating them again would be a real bug:
+
+| Outcome | Meaning | Behaviour |
+|---|---|---|
+| `multiple` | Every crop resolved, they disagree. We can name all the consignors. | Header set to MULTIPLE |
+| `unmapped_crop` | A crop has **no rule at all** — its consignor is unknown. | Still a human decision |
+
+Unmapped **wins** over multiple when both are true. MULTIPLE asserts "we know
+them all"; an unmapped crop breaks that claim, so an order with mapped Papaya,
+mapped Passionfruit and an unmapped third crop is an unknown, not a multiple.
+
+### Off switch — no deploy needed
+
+The runner treats an absent config key as "not configured" and falls straight
+back to the old behaviour, skipping as `multiple_not_configured`:
+
+```sql
+update process_definitions
+set config = config - 'multiple_consignor_ft_id'
+where key = 'consignor_auto_assign';
+```
+
+### Why Stage B was deferred, and what it would need
+
+Verified against the live FreshTrack API before building:
+
+- `dispatchLoads(filterOrderId:)`, `DispatchLoadNode.consignorId` and
+  `bulkUpdateDispatchLoads({stateId, consignorId, carrierId})` all exist — the
+  narrow bulk input avoids the ~20-required-field read-modify-write that
+  `updateDispatchLoad` would force. **Stage B is possible whenever wanted.**
+- **But `orderItems.dispatchLoadId` is null on every line of every order
+  sampled across all six live states (0 of 48).** The line→load link is not
+  used in this tenant, so crop-per-load is only knowable from PALLETS, which
+  exist only after packing — i.e. late.
+- Of 25 packed loads sampled, **all 25 carried exactly one crop**, so the
+  signal is clean once it exists.
+- 5 of 14 multi-load orders already have differing load consignors, set by
+  hand — e.g. order 5024965 (`5019613` APPEC / `5019599` SQBRL).
+
+### Why the header write is safe
+
+Sampled all 10 blank-consignor orders in a 400-order window: 9 had all-blank
+load consignors, and the single exception was a **cancelled** order, a state
+`assignable_state_codes` already excludes. So for everything this process acts
+on, a blank order consignor implies blank load consignors — the header write
+never overwrites a load value, and `applyConsignor` still refuses any order
+whose consignor is already set.
+
+**Ids:** `multiple_consignor_ft_id` is the CONSIGNOR ROLE id
+(`019ff95b-e763-b796-2f35-26c24b5ea7a2`), not the entity id
+(`019ff95b-e75a-…`). The two differ, the rules table stores role ids too, and
+mixing them up fails silently — the write succeeds and points at nothing usable.

@@ -134,18 +134,35 @@ describe("matchOrder — no rule anywhere", () => {
   });
 });
 
-describe("matchOrder — mixed crops still get flagged, whichever tier each side comes from", () => {
-  it("COLEC Papaya (tier 1) + Passionfruit (tier 2, global) is ambiguous, not silently Papaya's consignor", () => {
+describe("matchOrder — mixed crops resolve to MULTIPLE, whichever tier each side comes from", () => {
+  it("COLEC Papaya (tier 1) + Passionfruit (tier 2, global) is multiple, not silently Papaya's consignor", () => {
     const result = matchOrder(RULES, COLEC, [CROP_PAPAYA, CROP_PASSION]);
-    expect(result.kind).toBe("ambiguous");
+    expect(result.kind).toBe("multiple");
+    if (result.kind === "multiple") {
+      // Both consignors named, so "MULTIPLE" on the header is a statement we
+      // can actually back — and the codes tell whoever splits the loads which
+      // two they are.
+      expect(result.consignorEntityCodes).toEqual(["APPEC", "SQBRL"]);
+      expect(result.candidateRuleIds).toHaveLength(2);
+    }
   });
 
-  it("COLME Mango (tier 3, its own default) + Passionfruit (tier 2, global) is ALSO ambiguous — a customer's normal fruit mixed with passionfruit still needs a human", () => {
+  it("COLME Mango (tier 3, its own default) + Passionfruit (tier 2, global) is ALSO multiple", () => {
     const result = matchOrder(RULES, COLME, [CROP_MANGO, CROP_PASSION]);
-    expect(result.kind).toBe("ambiguous");
+    expect(result.kind).toBe("multiple");
   });
 
-  it("does NOT flag ambiguous when both crops resolve to the SAME consignor", () => {
+  it("consignorEntityCodes is sorted and deduped, so the log reads the same however crops arrive", () => {
+    const a = matchOrder(RULES, COLEC, [CROP_PAPAYA, CROP_PASSION]);
+    const b = matchOrder(RULES, COLEC, [CROP_PASSION, CROP_PAPAYA]);
+    expect(a.kind).toBe("multiple");
+    expect(b.kind).toBe("multiple");
+    if (a.kind === "multiple" && b.kind === "multiple") {
+      expect(a.consignorEntityCodes).toEqual(b.consignorEntityCodes);
+    }
+  });
+
+  it("does NOT flag multiple when both crops resolve to the SAME consignor", () => {
     // ALDIS's own default already IS SQBRL, so Passionfruit (global -> SQBRL)
     // agrees with Mango (ALDIS default -> SQBRL) — same consignor, no conflict.
     // Which specific rule record "wins" isn't a meaningful contract here (both
@@ -155,6 +172,41 @@ describe("matchOrder — mixed crops still get flagged, whichever tier each side
     if (result.kind === "matched") {
       expect(result.rule.consignorFreshtrackId).toBe(CONSIGNOR_SQBRL);
     }
+  });
+});
+
+describe("matchOrder — unmapped_crop is NOT multiple", () => {
+  /**
+   * The distinction Stage A turns on. MULTIPLE asserts "we know every
+   * consignor on this order and they disagree". A crop with no rule breaks
+   * that claim, so it must stay a human decision — otherwise an order would
+   * get a MULTIPLE header while nobody can say what the second consignor
+   * should even be.
+   */
+  const CROP_LYCHEE = "crop-lychee"; // no rule anywhere in RULES
+
+  it("a mapped crop plus an unmapped one is unmapped_crop, not multiple", () => {
+    const result = matchOrder(RULES, COLEC, [CROP_PAPAYA, CROP_LYCHEE]);
+    expect(result.kind).toBe("unmapped_crop");
+    if (result.kind === "unmapped_crop") {
+      expect(result.matchedRuleIds).toHaveLength(1); // only Papaya resolved
+    }
+  });
+
+  it("unmapped wins even when the mapped crops ALSO disagree", () => {
+    // Papaya -> APPEC, Passionfruit -> SQBRL, Lychee -> nothing. Two known
+    // consignors disagreeing would be `multiple`, but the unknown third makes
+    // the set unenumerable, so it is not a MULTIPLE.
+    const result = matchOrder(RULES, COLEC, [CROP_PAPAYA, CROP_PASSION, CROP_LYCHEE]);
+    expect(result.kind).toBe("unmapped_crop");
+  });
+
+  it("every crop unmapped is still no_rule, not unmapped_crop", () => {
+    // Nothing matched at all — a different situation, and one the report
+    // already labels separately.
+    expect(matchOrder(RULES, "consignee-unknown", [CROP_LYCHEE])).toEqual({
+      kind: "no_rule",
+    });
   });
 });
 
