@@ -34,7 +34,7 @@ import { runProcess } from "@/lib/processes/registry";
 import {
   parseSchedule,
   isRunDue,
-  SUCCESSFUL_RUN_STATUSES,
+  TERMINAL_RUN_STATUSES,
 } from "@/lib/processes/schedule";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +60,11 @@ export async function GET(request: Request) {
   const { data, error } = await admin
     .from("process_definitions")
     .select("key, config")
-    .eq("enabled", true);
+    .eq("enabled", true)
+    // Deterministic order: which process is judged first must not depend on
+    // Postgres row order, since the earlier one consumes wall-clock time from
+    // the same 300s budget.
+    .order("key");
 
   if (error) {
     return NextResponse.json(
@@ -69,11 +73,11 @@ export async function GET(request: Request) {
     );
   }
 
-  const now = new Date();
+  const checkedAt = new Date();
   const results: Array<{
     key: string;
     ran: boolean;
-    lastSuccessAt?: string | null;
+    lastRunAt?: string | null;
     result?: unknown;
     error?: string;
   }> = [];
@@ -88,21 +92,29 @@ export async function GET(request: Request) {
       // A process with no valid schedule config defaults to hourly rather than
       // silently never running — fail toward "runs too often" (harmless, since
       // discovery + guards are idempotent) not "never runs at all".
-      const lastSuccessAt = await getLastSuccessAt(admin, row.key);
-      const due = isRunDue(schedule ?? { frequency: "hourly" }, now, lastSuccessAt);
-      if (!due) {
+      const effective = schedule ?? { frequency: "hourly" };
+      // Read the clock per process, not once for the whole loop. Processes run
+      // sequentially and maxDuration is 300s, so a slow first process could
+      // otherwise have the second judged against a clock staler than
+      // DUE_TOLERANCE_MS — a silently dropped run, which is the exact bug class
+      // this route was rewritten to remove.
+      const isDueNow = async () =>
+        isRunDue(effective, new Date(), await getLastRunAt(admin, row.key));
+
+      const lastRunAt = await getLastRunAt(admin, row.key);
+      if (!isRunDue(effective, new Date(), lastRunAt)) {
         results.push({
           key: row.key,
           ran: false,
-          lastSuccessAt: lastSuccessAt?.toISOString() ?? null,
+          lastRunAt: lastRunAt?.toISOString() ?? null,
         });
         continue;
       }
-      const result = await runProcess(row.key, "cron");
+      const result = await runProcess(row.key, "cron", undefined, isDueNow);
       results.push({
         key: row.key,
-        ran: true,
-        lastSuccessAt: lastSuccessAt?.toISOString() ?? null,
+        ran: result.status !== "skipped_not_due",
+        lastRunAt: lastRunAt?.toISOString() ?? null,
         result,
       });
     } catch (err) {
@@ -114,15 +126,19 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ status: "ok", checkedAt: now.toISOString(), results });
+  return NextResponse.json({
+    status: "ok",
+    checkedAt: checkedAt.toISOString(),
+    results,
+  });
 }
 
 /**
- * started_at of the most recent run that completed its work, or null if the
- * process has never had one. Served by the existing
+ * started_at of the most recent run that reached a terminal status, or null if
+ * the process has never run. Served by the existing
  * process_runs(process_key, started_at desc) index.
  */
-async function getLastSuccessAt(
+async function getLastRunAt(
   admin: ReturnType<typeof createAdminClient>,
   processKey: string
 ): Promise<Date | null> {
@@ -130,11 +146,11 @@ async function getLastSuccessAt(
     .from("process_runs")
     .select("started_at")
     .eq("process_key", processKey)
-    .in("status", SUCCESSFUL_RUN_STATUSES as unknown as string[])
+    .in("status", TERMINAL_RUN_STATUSES)
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error) throw new Error(`getLastSuccessAt(${processKey}): ${error.message}`);
+  if (error) throw new Error(`getLastRunAt(${processKey}): ${error.message}`);
   return data?.started_at ? new Date(data.started_at as string) : null;
 }

@@ -7,6 +7,7 @@ import "server-only";
 import {
   claimRun,
   releaseRun,
+  discardRun,
   getProcessDefinition,
   type ProcessMode,
   type RunTrigger,
@@ -30,7 +31,13 @@ const REGISTRY: Record<string, ProcessRunFn> = {
 };
 
 export interface RunProcessResult {
-  status: "success" | "partial" | "failed" | "skipped_locked" | "disabled";
+  status:
+    | "success"
+    | "partial"
+    | "failed"
+    | "skipped_locked"
+    | "skipped_not_due"
+    | "disabled";
   runId?: string;
   error?: string;
 }
@@ -42,7 +49,8 @@ export interface RunProcessResult {
 export async function runProcess(
   processKey: string,
   trigger: RunTrigger,
-  triggeredBy?: string
+  triggeredBy?: string,
+  stillDue?: () => Promise<boolean>
 ): Promise<RunProcessResult> {
   const def = await getProcessDefinition(processKey);
   if (!def || !def.enabled) return { status: "disabled" };
@@ -54,6 +62,19 @@ export async function runProcess(
 
   const claim = await claimRun(processKey, trigger, def.mode, triggeredBy);
   if (!claim) return { status: "skipped_locked" };
+
+  // Due-ness was decided BEFORE the claim, and Vercel cron delivery is
+  // at-least-once. Two invocations a second apart both read the same lastRunAt,
+  // both judge themselves due, and the UNIQUE partial index does not stop the
+  // second — it only excludes runs that overlap IN TIME, so once the first
+  // releases, the second claims cleanly and runs again. For the report that is
+  // two emails seconds apart. Re-asking after winning the claim closes it: the
+  // first run's row is now the newest terminal row, so the loser sees it and
+  // stands down.
+  if (stillDue && !(await stillDue())) {
+    await discardRun(claim.runId);
+    return { status: "skipped_not_due" };
+  }
 
   try {
     const result = await fn({

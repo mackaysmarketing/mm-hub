@@ -51,10 +51,19 @@ export function brisbaneHour(nowUtc: Date): number {
  * the same daily rate. See `isRunDue — the 30s tolerance cascade` in the
  * tests, which pins that arithmetic.
  *
- * Half the tick period is the largest tolerance that still cannot double-run:
- * two invocations must be at least this far apart to both fire, and the tick
- * only fires every TICK_MINUTES. It absorbs any drift the platform can
- * plausibly introduce between consecutive ticks.
+ * WHY HALF specifically. Not "the largest tolerance that cannot double-run" —
+ * that would be 259s, since two ticks 40s apart both fire only once the
+ * threshold drops below 40s (300 - 260). Half the tick period is the value
+ * that centres the decision boundary: a tick fires at k intervals when elapsed
+ * >= k*300 - 150, so the same 150s of drift is absorbed in BOTH directions
+ * around each boundary — an early tick has 150s of room before it double-runs,
+ * a late one 150s before it drops the next. Any other value trades one margin
+ * for the other.
+ *
+ * This raises the drift the scheduler tolerates from 30s to 150s; it does not
+ * make it unbounded. A tick more than 150s late still drops the run after it.
+ * That is a known limit, pinned by tests and recorded in SPRINT.md — not a
+ * claim that the cascade is gone.
  */
 export const DUE_TOLERANCE_MS = (TICK_MINUTES * 60_000) / 2;
 
@@ -62,20 +71,30 @@ export const DUE_TOLERANCE_MS = (TICK_MINUTES * 60_000) / 2;
 export const BRIEF_TOLERANCE_MS = 30_000;
 
 /**
- * Run statuses that count as "this process has already done its work".
+ * Run statuses that mean "this process RAN" — the axis due-ness is measured on.
+ * Deliberately not "succeeded".
  *
- * `partial` is included deliberately. It means the run completed but some
- * assignment rules failed live validation — a PERSISTENT condition, not a
- * transient one (the assign process reported partial for days while migration
- * 00018 was applied ahead of its code). Excluding it would mean lastSuccessAt
- * never advances, every tick is due, and the hourly report sends twelve emails
- * an hour: the same drift bug this replaced, pointing the other way.
+ * The sprint brief asked for last-*successful*-run, so a failure would not
+ * block the next attempt for a whole interval. Implemented literally that
+ * produces a retry storm, because at tick cadence "not blocked" means "retried
+ * every 5 minutes, forever, with no backoff":
  *
- * `failed` is excluded so a failure retries on the next tick instead of
- * blocking the process for a whole interval. `skipped_locked` never writes a
- * row at all.
+ *  - `failed` is set whenever actions_failed > 0 (registry.ts), which
+ *    consignorAssign increments for a SINGLE order FreshTrack rejects. One
+ *    permanently-rejected order would make an hourly process run 12x an hour.
+ *  - The report throws on any non-2xx from Resend (lib/resend.ts), and that
+ *    send has no idempotency key. A timeout on a message Resend actually
+ *    accepted would re-send 5 minutes later, and again, and again — against an
+ *    acceptance criterion that says the report must not send two emails.
+ *
+ * Both are the drift bug pointing the other way: a run that happened not
+ * counting as having happened. A terminal status means the work was attempted,
+ * so the interval restarts and a failure retries on the next INTERVAL rather
+ * than the next tick. `running` is excluded (still in flight; the 15-minute
+ * reaper in runner.ts moves a killed one to `failed`), and `skipped_locked`
+ * never writes a row at all.
  */
-export const SUCCESSFUL_RUN_STATUSES = ["success", "partial"] as const;
+export const TERMINAL_RUN_STATUSES = ["success", "partial", "failed"] as const;
 
 /** Is `n` a usable custom interval — a whole multiple of the tick, up to an hour? */
 export function isValidIntervalMinutes(n: unknown): n is number {
@@ -150,19 +169,25 @@ function mostRecentDailyAnchor(atHour: number, nowUtc: Date): Date {
  * of the :00 slot and 37% of :30, and every hour whose tick drifted to :01
  * lost the hourly report entirely.
  *
- * `lastSuccessAt` is the started_at of the most recent run that completed its
- * work (see SUCCESSFUL_RUN_STATUSES). Null means the process has never run, in
- * which case it is due immediately.
+ * `lastRunAt` is the started_at of the most recent run that reached a terminal
+ * status (see TERMINAL_RUN_STATUSES) — "when did this last run", not "when did
+ * it last succeed". Null means it has never run, in which case it is due
+ * immediately.
  *
  * A late tick still fires, because elapsed time only grows. A gap fires ONCE
  * on the next tick rather than once per missed slot, because this answers "is
  * it due now", not "how many slots were skipped" — so the report cannot send a
  * backlog of catch-up emails.
+ *
+ * A `lastRunAt` in the future (clock skew between Postgres, which stamps
+ * started_at, and the Vercel runtime, which supplies nowUtc) yields a negative
+ * elapsed and simply reads as not-due until real time catches up. It cannot
+ * cause a double run.
  */
 export function isRunDue(
   schedule: ProcessSchedule,
   nowUtc: Date,
-  lastSuccessAt: Date | null
+  lastRunAt: Date | null
 ): boolean {
   if (schedule.frequency === "daily") {
     const atHour = schedule.at_hour_brisbane;
@@ -170,13 +195,13 @@ export function isRunDue(
     // Anchored to an hour, never to a minute: a tick at 07:01 still fires,
     // because what matters is that no run has happened since 07:00.
     const anchor = mostRecentDailyAnchor(atHour, nowUtc);
-    return lastSuccessAt === null || lastSuccessAt.getTime() < anchor.getTime();
+    return lastRunAt === null || lastRunAt.getTime() < anchor.getTime();
   }
 
   const interval = scheduleIntervalMs(schedule);
   if (interval === null) return false; // malformed — never run rather than guess
-  if (lastSuccessAt === null) return true;
-  return nowUtc.getTime() - lastSuccessAt.getTime() >= interval - DUE_TOLERANCE_MS;
+  if (lastRunAt === null) return true;
+  return nowUtc.getTime() - lastRunAt.getTime() >= interval - DUE_TOLERANCE_MS;
 }
 
 /** Human-readable rendering of a schedule — admin UI copy and email reports. */
@@ -210,7 +235,17 @@ export function parseSchedule(raw: unknown): ProcessSchedule | null {
     return { frequency: "every_n_minutes", n: obj.n };
   }
   if (obj.frequency === "hourly") return { frequency: "hourly" };
-  if (obj.frequency === "every_n_hours" && typeof obj.n === "number") {
+  // n must be validated HERE, not left to isRunDue. A shape that parses but can
+  // never be due is the silent-never-runs failure this scheduler exists to
+  // eliminate: {frequency:"every_n_hours", n:0} would pass the settings PATCH,
+  // store cleanly, and then never fire — and the route's "no valid schedule ->
+  // default to hourly" fallback only catches a NULL parse, not this.
+  if (
+    obj.frequency === "every_n_hours" &&
+    typeof obj.n === "number" &&
+    Number.isInteger(obj.n) &&
+    obj.n > 0
+  ) {
     return { frequency: "every_n_hours", n: obj.n };
   }
   if (

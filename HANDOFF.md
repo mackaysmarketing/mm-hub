@@ -302,19 +302,25 @@ nothing while still returning 200. Over 5 days of `process_runs`, against an
 expected 120 per slot: `:00 -> 70`, `:30 -> 76`, every other slot 119–120. The
 hourly report lost the entire hour whenever its one slot drifted to :01.
 
-**What replaced it.** `isRunDue(schedule, nowUtc, lastSuccessAt)` — a process is
-due when `now - lastSuccessAt >= interval - DUE_TOLERANCE_MS`. The cron route
-looks up `lastSuccessAt` per process from `process_runs`. `daily` is anchored to
-a Brisbane *hour* (never a minute): due once the day's anchor has passed and no
-run has happened since.
+**What replaced it.** `isRunDue(schedule, nowUtc, lastRunAt)` — a process is due
+when `now - lastRunAt >= interval - DUE_TOLERANCE_MS`. The cron route looks up
+`lastRunAt` per process from `process_runs`. `daily` is anchored to a Brisbane
+*hour* (never a minute): due once the day's anchor has passed and no run has
+happened since.
 
-Three things worth knowing before changing this:
+Things worth knowing before changing this:
 
 | Thing | Why it is the way it is |
 |---|---|
-| `DUE_TOLERANCE_MS` is 150s (half the tick), not the 30s the brief named | At 30s, any tick more than 30s late drops the *next* one — the bug relocated, not fixed. Pinned by `isRunDue — the 30s tolerance cascade`. |
-| `SUCCESSFUL_RUN_STATUSES` includes `partial` | `partial` means the run completed but some rules failed validation — a persistent state. Excluding it would mean `lastSuccessAt` never advances and the report sends 12 emails an hour. `failed` is excluded so a failure retries next tick. |
+| `DUE_TOLERANCE_MS` is 150s (half the tick), not the 30s the brief named | At 30s, any tick more than 30s late drops the *next* one — the bug relocated, not fixed. 150s is chosen for **symmetry** (equal drift margin either side of a boundary), *not* because it is the largest safe value — that would be 259s. Pinned by `isRunDue — the 30s tolerance cascade`. |
+| `TERMINAL_RUN_STATUSES` includes `failed` | Due-ness is "did it run", not "did it succeed". `registry.ts` marks a run `failed` when a *single* order's FreshTrack write fails, and the report throws on any non-2xx from Resend. Keying on success meant a 5-minute retry storm and duplicate emails against an API with no idempotency key. A failure retries on the next *interval*. |
+| Due-ness is re-checked after `claimRun` succeeds | Vercel cron delivery is at-least-once. Two invocations a second apart both read the same `lastRunAt` and both judge themselves due; the UNIQUE index only excludes runs overlapping *in time*, so the loser would run once the winner released. The loser's row is deleted, not released — releasing it would advance `lastRunAt`. |
+| The clock is read per process, and rows are ordered by `key` | `now` captured once before the loop meant a slow first process could get the second judged against a clock staler than the tolerance — a dropped run, the original bug through a different door. |
 | The cron loop wraps each process in try/catch | Previously a throw from one process 500'd the route and the other never ran on that tick. |
+
+**Two things this does NOT guarantee**, both pinned by tests — see SPRINT.md
+"Known limits": a tick more than 150s late still drops the run after it, and the
+report's real invariant is a 57m30s minimum gap rather than once per clock hour.
 
 **Verify in production 24h after deploy** (Supabase SQL editor, `data_hub`):
 
@@ -326,8 +332,11 @@ where process_key = 'consignor_auto_assign'
 group by 1 order by 1;
 ```
 
-Expect 12 rows, each close to 24 — `:00` and `:30` are the ones that were
-failing. Then the report, expecting 24:
+Expect **12 dominant rows, each close to 24**, plus a few stragglers at `:01`,
+`:31` and so on — a drifted tick now runs and records at the minute it actually
+arrived, which is the whole point. Read it as "no slot is badly short", not as
+"exactly 12 rows": `:00` and `:30` were at 58% and 63% of expected before this
+fix. Then the report, expecting 24:
 
 ```sql
 select count(*) from public.process_runs

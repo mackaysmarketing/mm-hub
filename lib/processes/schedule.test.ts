@@ -8,7 +8,7 @@ import {
   scheduleIntervalMs,
   DUE_TOLERANCE_MS,
   BRIEF_TOLERANCE_MS,
-  SUCCESSFUL_RUN_STATUSES,
+  TERMINAL_RUN_STATUSES,
   TICK_MINUTES,
   type ProcessSchedule,
 } from "./schedule";
@@ -195,12 +195,41 @@ describe("isRunDue — the 30s tolerance cascade", () => {
     expect(isRunDue(EVERY_5, tick, last)).toBe(true);
   });
 
-  it("the chosen tolerance is the largest that still cannot double-run", () => {
-    // Two ticks must be at least DUE_TOLERANCE_MS apart to both fire, and the
-    // cron only fires every TICK_MINUTES — so a double run is unreachable.
-    expect(DUE_TOLERANCE_MS).toBe((TICK_MINUTES * 60_000) / 2);
-    expect(DUE_TOLERANCE_MS).toBeLessThan(TICK_MINUTES * 60_000);
+  it("the chosen tolerance centres the decision boundary, absorbing equal drift both ways", () => {
+    // NOT "the largest tolerance that cannot double-run" — that is 259s, since
+    // two ticks 40s apart both fire once the threshold falls below 40s. The
+    // property that actually justifies 150s is symmetry: the same drift is
+    // absorbed on each side of a boundary.
+    const tickMs = TICK_MINUTES * 60_000;
+    const last = utc(9, 0, 0);
+    const earlyRoom = tickMs - DUE_TOLERANCE_MS; // elapsed at which a tick fires
+    const lateRoom = DUE_TOLERANCE_MS; // lateness before the next is dropped
+    expect(earlyRoom).toBe(lateRoom);
+
+    // Exactly at the boundary it fires; one second earlier it does not.
+    expect(isRunDue(EVERY_5, new Date(last.getTime() + earlyRoom), last)).toBe(true);
+    expect(isRunDue(EVERY_5, new Date(last.getTime() + earlyRoom - 1000), last)).toBe(false);
+  });
+
+  it("the 259s boundary the 'largest' claim would have implied", () => {
+    // Documents why that claim was wrong, so it cannot be reinstated by
+    // someone reasoning about it afresh.
+    const tickMs = TICK_MINUTES * 60_000;
+    expect(tickMs - 259_000).toBeGreaterThan(40_000); // 41s: 40s apart still safe
+    expect(tickMs - 260_000).toBeLessThanOrEqual(40_000); // 40s: double-run
+    expect(DUE_TOLERANCE_MS).toBeLessThan(259_000);
     expect(DUE_TOLERANCE_MS).toBeGreaterThan(BRIEF_TOLERANCE_MS);
+  });
+
+  it("a tick later than the tolerance still drops the next run — a known limit, not a fix", () => {
+    // 150s raises the drift the scheduler absorbs from 30s; it does not make it
+    // unbounded. Pinned so the docs cannot drift into claiming otherwise.
+    const veryLate = utc(21, 33, 20); // 200s late
+    const nextTick = utc(21, 35, 11);
+    expect(nextTick.getTime() - veryLate.getTime()).toBeLessThan(
+      5 * 60_000 - DUE_TOLERANCE_MS
+    );
+    expect(isRunDue(EVERY_5, nextTick, veryLate)).toBe(false);
   });
 
   it("still refuses the 40-second double-run the brief asked about", () => {
@@ -268,6 +297,53 @@ describe("isRunDue — daily", () => {
   });
 });
 
+describe("isRunDue — the report's real spacing invariant", () => {
+  /**
+   * SPRINT.md and HANDOFF.md previously said the report "fires once an hour"
+   * flatly. What the code actually guarantees is a minimum spacing of
+   * interval - tolerance = 57m30s. Inside the drift Vercel has actually shown
+   * (<=75s) those coincide, but a tick late enough can put two sends in one
+   * clock hour. Stated here so the guarantee is not overclaimed.
+   */
+  it("guarantees a 57m30s minimum gap, which is not the same as once per clock hour", () => {
+    const minGap = 3_600_000 - DUE_TOLERANCE_MS;
+    expect(minGap).toBe(3_450_000);
+
+    const first = utc(12, 0, 14);
+    const secondSameHour = new Date(first.getTime() + minGap); // 12:57:44
+    expect(isRunDue(HOURLY, secondSameHour, first)).toBe(true);
+    expect(secondSameHour.getUTCHours()).toBe(first.getUTCHours()); // same clock hour
+  });
+
+  it("but a 5-minute tick cadence keeps it to once an hour in practice", () => {
+    // The 12:55 tick is 3286s after a 12:00:14 run — short of 3450s — so the
+    // next send is the 13:00 tick. Two-in-an-hour needs a tick landing in the
+    // 57m30s-60m window, which a 5-minute cadence only reaches when a tick is
+    // more than ~150s late.
+    const ticks: Date[] = [];
+    for (let h = 12; h < 15; h++) {
+      for (let m = 0; m < 60; m += 5) ticks.push(utc(h, m, 14));
+    }
+    const fired = replay(HOURLY, ticks, utc(11, 0, 14));
+    expect(fired).toHaveLength(3);
+    expect(fired.map((d) => d.getUTCHours())).toEqual([12, 13, 14]);
+  });
+});
+
+describe("isRunDue — clock skew", () => {
+  it("a lastRunAt in the future reads as not-due and cannot double-run", () => {
+    // started_at is stamped by Postgres, nowUtc comes from the Vercel runtime.
+    const future = new Date(utc(9, 0, 0).getTime() + 30_000);
+    expect(isRunDue(EVERY_5, utc(9, 0, 0), future)).toBe(false);
+    expect(isRunDue(HOURLY, utc(9, 0, 0), future)).toBe(false);
+  });
+
+  it("recovers on its own once real time passes the skew", () => {
+    const future = new Date(utc(9, 0, 0).getTime() + 30_000);
+    expect(isRunDue(EVERY_5, new Date(future.getTime() + 5 * 60_000), future)).toBe(true);
+  });
+});
+
 describe("isRunDue — malformed schedules never run", () => {
   it("refuses an interval the tick can't express", () => {
     expect(isRunDue({ frequency: "every_n_minutes", n: 7 }, utc(3), null)).toBe(false);
@@ -297,18 +373,30 @@ describe("scheduleIntervalMs", () => {
   });
 });
 
-describe("SUCCESSFUL_RUN_STATUSES", () => {
-  it("counts a partial run as work done, so it cannot fire on every tick", () => {
-    // The assign process reported `partial` for days while migration 00018 was
-    // applied ahead of its code. Excluding partial would mean lastSuccessAt
-    // never advances and the hourly report sends 12 emails an hour.
-    expect(SUCCESSFUL_RUN_STATUSES).toContain("partial");
+describe("TERMINAL_RUN_STATUSES", () => {
+  it("counts every run that happened, including failed ones", () => {
+    // Due-ness is measured on "did it run", not "did it succeed". registry.ts
+    // marks a run `failed` when actions_failed > 0, which consignorAssign
+    // increments for a SINGLE order FreshTrack rejects — so keying on success
+    // would let one bad order make an hourly process run every 5 minutes.
+    expect(TERMINAL_RUN_STATUSES).toContain("success");
+    expect(TERMINAL_RUN_STATUSES).toContain("partial");
+    expect(TERMINAL_RUN_STATUSES).toContain("failed");
   });
 
-  it("excludes failed, so a failure retries on the next tick", () => {
-    expect(SUCCESSFUL_RUN_STATUSES).not.toContain("failed");
-    expect(SUCCESSFUL_RUN_STATUSES).not.toContain("skipped_locked");
-    expect(SUCCESSFUL_RUN_STATUSES).not.toContain("running");
+  it("excludes statuses that mean the run did not happen", () => {
+    expect(TERMINAL_RUN_STATUSES).not.toContain("running");
+    expect(TERMINAL_RUN_STATUSES).not.toContain("skipped_locked");
+  });
+
+  it("a failing process retries on the next interval, not the next tick", () => {
+    // The failure retries — it is not wedged — but at its own cadence, so a
+    // report whose Resend call throws cannot re-send 12 times an hour against
+    // an API with no idempotency key.
+    const failedAt = utc(9, 0, 14);
+    const ticks = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => utc(9, m, 14));
+    expect(replay(HOURLY, ticks, failedAt)).toHaveLength(0);
+    expect(isRunDue(HOURLY, utc(10, 0, 14), failedAt)).toBe(true);
   });
 });
 
@@ -357,6 +445,17 @@ describe("parseSchedule", () => {
     expect(parseSchedule({ frequency: "daily", at_hour_brisbane: 25 })).toBeNull();
     expect(parseSchedule({ frequency: "daily", at_hour_brisbane: -1 })).toBeNull();
     expect(parseSchedule({ frequency: "every_n_hours" })).toBeNull(); // missing n
+  });
+
+  it("rejects an every_n_hours n that would parse but never be due", () => {
+    // These used to parse cleanly and then never fire: scheduleIntervalMs
+    // returns null, isRunDue returns false, and the route's "no valid schedule
+    // -> hourly" fallback only catches a NULL parse. Silent-never-runs is the
+    // failure class this scheduler exists to eliminate, so it is refused at the
+    // door and the settings PATCH 400s.
+    expect(parseSchedule({ frequency: "every_n_hours", n: 0 })).toBeNull();
+    expect(parseSchedule({ frequency: "every_n_hours", n: -3 })).toBeNull();
+    expect(parseSchedule({ frequency: "every_n_hours", n: 1.5 })).toBeNull();
   });
 
   it("rejects an interval the tick can't express, so the settings PATCH 400s", () => {

@@ -103,6 +103,19 @@ export interface RunSummary {
   payload?: Record<string, unknown>;
 }
 
+/**
+ * Delete a claimed run that turned out not to be due after all — see the
+ * post-claim re-check in registry.runProcess(). The row is removed rather than
+ * released with a status because the process never started: leaving it would
+ * put a phantom entry in the activity log and, worse, advance the lastRunAt
+ * that due-ness is measured from.
+ */
+export async function discardRun(runId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin.from("process_runs").delete().eq("id", runId);
+  if (error) throw new Error(`discardRun(${runId}): ${error.message}`);
+}
+
 export async function releaseRun(runId: string, summary: RunSummary): Promise<void> {
   const admin = createAdminClient();
   const { error } = await admin
