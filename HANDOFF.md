@@ -287,3 +287,50 @@ walking the full smoke test.
 2. **NetSuite raw export.** Get a non-empty sample of the raw RCTI data file
    that lands on SFTP alongside the PDF. With that, the proper consolidation
    pipeline is unblockable.
+
+## Cron tick drift — process scheduler (2026-08-13)
+
+`/api/cron/processes` decides due-ness by **elapsed time since the last
+completed run**, never by the wall-clock minute. See `SPRINT.md` for the full
+sprint record.
+
+**What was wrong.** `isRunDue()` matched the current minute against exact slots
+(`minute % n === 0` for `every_n_minutes`, `minute === 0` for `hourly`). Vercel
+does not guarantee a cron lands on the minute, and :00 and :30 are its busiest
+slots, so those invocations arrived late, failed the match, and silently did
+nothing while still returning 200. Over 5 days of `process_runs`, against an
+expected 120 per slot: `:00 -> 70`, `:30 -> 76`, every other slot 119–120. The
+hourly report lost the entire hour whenever its one slot drifted to :01.
+
+**What replaced it.** `isRunDue(schedule, nowUtc, lastSuccessAt)` — a process is
+due when `now - lastSuccessAt >= interval - DUE_TOLERANCE_MS`. The cron route
+looks up `lastSuccessAt` per process from `process_runs`. `daily` is anchored to
+a Brisbane *hour* (never a minute): due once the day's anchor has passed and no
+run has happened since.
+
+Three things worth knowing before changing this:
+
+| Thing | Why it is the way it is |
+|---|---|
+| `DUE_TOLERANCE_MS` is 150s (half the tick), not the 30s the brief named | At 30s, any tick more than 30s late drops the *next* one — the bug relocated, not fixed. Pinned by `isRunDue — the 30s tolerance cascade`. |
+| `SUCCESSFUL_RUN_STATUSES` includes `partial` | `partial` means the run completed but some rules failed validation — a persistent state. Excluding it would mean `lastSuccessAt` never advances and the report sends 12 emails an hour. `failed` is excluded so a failure retries next tick. |
+| The cron loop wraps each process in try/catch | Previously a throw from one process 500'd the route and the other never ran on that tick. |
+
+**Verify in production 24h after deploy** (Supabase SQL editor, `data_hub`):
+
+```sql
+select extract(minute from started_at)::int as minute_of_hour, count(*) runs
+from public.process_runs
+where process_key = 'consignor_auto_assign'
+  and started_at > now() - interval '24 hours'
+group by 1 order by 1;
+```
+
+Expect 12 rows, each close to 24 — `:00` and `:30` are the ones that were
+failing. Then the report, expecting 24:
+
+```sql
+select count(*) from public.process_runs
+where process_key = 'consignor_auto_assign_report'
+  and started_at > now() - interval '24 hours';
+```

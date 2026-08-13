@@ -44,14 +44,12 @@ import { validateRecipients } from "@/lib/processes/runReport/recipients";
 import {
   parseSchedule,
   describeSchedule,
-  intervalWrapGapMinutes,
   MAX_INTERVAL_MINUTES,
 } from "@/lib/processes/schedule";
 import {
   scheduleToOption,
   optionToSchedule,
   selectedMinutes,
-  fireMinutes,
   FREQUENCY_OPTIONS,
   INTERVAL_CHOICES,
   CUSTOM_MINUTES,
@@ -914,7 +912,6 @@ function ScheduleField({
   const option = scheduleToOption(schedule);
   const parsed = parseSchedule(schedule);
   const minutes = selectedMinutes(schedule);
-  const wrapGap = option === CUSTOM_MINUTES ? intervalWrapGapMinutes(minutes) : null;
 
   return (
     <div className="flex items-center justify-between border-b border-sand py-3.5 last:border-0">
@@ -926,15 +923,6 @@ function ScheduleField({
               Brisbane note only means anything for an hour-anchored shape. */}
           {option !== CUSTOM_MINUTES && " — Brisbane time (fixed UTC+10, no DST)"}
         </p>
-        {wrapGap !== null && (
-          <p className="mt-1 max-w-[380px] text-xs text-blaze">
-            {minutes} doesn&apos;t divide evenly into an hour — runs at{" "}
-            {fireMinutes(minutes)
-              .map((m) => `:${String(m).padStart(2, "0")}`)
-              .join(", ")}
-            , then only {wrapGap} min before the next hour&apos;s first run.
-          </p>
-        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-2">

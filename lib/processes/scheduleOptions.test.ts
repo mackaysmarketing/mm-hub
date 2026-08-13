@@ -3,7 +3,6 @@ import {
   scheduleToOption,
   optionToSchedule,
   selectedMinutes,
-  fireMinutes,
   FREQUENCY_OPTIONS,
   INTERVAL_CHOICES,
   CUSTOM_MINUTES,
@@ -11,7 +10,7 @@ import {
   DEFAULT_CUSTOM_MINUTES,
   type StoredSchedule,
 } from "./scheduleOptions";
-import { parseSchedule, isRunDue, TICK_MINUTES } from "./schedule";
+import { parseSchedule, isRunDue, TICK_MINUTES, DUE_TOLERANCE_MS } from "./schedule";
 
 describe("scheduleToOption", () => {
   it("maps each preset to its own option", () => {
@@ -136,16 +135,18 @@ describe("INTERVAL_CHOICES", () => {
   });
 });
 
-describe("fireMinutes", () => {
-  it("lists the minutes the schedule engine actually fires on", () => {
+describe("every offered interval is honoured by the engine", () => {
+  it("fires after exactly its own interval, whatever the wall clock says", () => {
+    // Replaces the old fireMinutes test, which asserted which minutes-past-the-
+    // hour each interval landed on. Due-ness is elapsed time now, so there are
+    // no slots — an interval means what it says from the last run onwards.
+    const last = new Date(Date.UTC(2026, 6, 30, 4, 37, 19)); // deliberately off-slot
     for (const n of INTERVAL_CHOICES) {
-      const engineFires: number[] = [];
-      for (let m = 0; m < 60; m += TICK_MINUTES) {
-        if (isRunDue({ frequency: "every_n_minutes", n }, new Date(Date.UTC(2026, 6, 30, 4, m)))) {
-          engineFires.push(m);
-        }
-      }
-      expect(fireMinutes(n)).toEqual(engineFires);
+      const schedule = { frequency: "every_n_minutes" as const, n };
+      const due = new Date(last.getTime() + n * 60_000);
+      const tooSoon = new Date(last.getTime() + n * 60_000 - DUE_TOLERANCE_MS - 1_000);
+      expect(isRunDue(schedule, due, last)).toBe(true);
+      expect(isRunDue(schedule, tooSoon, last)).toBe(false);
     }
   });
 });

@@ -80,9 +80,7 @@ export function selectedMinutes(schedule?: StoredSchedule): number {
     : DEFAULT_CUSTOM_MINUTES;
 }
 
-/** The minutes past each hour an interval actually fires on. */
-export function fireMinutes(n: number): number[] {
-  const out: number[] = [];
-  for (let m = 0; m < 60; m += n) out.push(m);
-  return out;
-}
+// fireMinutes() lived here, listing the minutes-past-the-hour an interval
+// landed on. Due-ness is elapsed time now, so an interval has no fixed slots to
+// list — "every 25 minutes" means exactly that, from whenever the last run
+// happened. Removed with the uneven-cadence warning it fed.

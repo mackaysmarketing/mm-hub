@@ -13,17 +13,29 @@
  * express: nothing can run more often than the cron fires. It is duplicated as
  * TICK_MINUTES in lib/processes/schedule.ts, which nothing can verify at build
  * time — change both together. A tick this frequent is affordable because the
- * common path is one Supabase select and an early return: work only happens on
- * the ticks where a process is actually due.
+ * common path is two small indexed selects and an early return: work only
+ * happens on the ticks where a process is actually due.
+ *
+ * DUE-NESS IS ELAPSED TIME, NOT THE CLOCK. This route hands isRunDue the
+ * started_at of each process's last completed run, and due-ness is measured
+ * from that. It deliberately does NOT ask "is the current minute a slot" —
+ * Vercel does not guarantee a cron lands on the minute, and when that check
+ * existed a tick arriving at :01 instead of :00 silently ran nothing while
+ * still returning 200. See SPRINT.md (2026-08-13).
  *
  * "Run now" (app/api/processes/[key]/run) calls the exact same runProcess()
  * function directly, bypassing the schedule check, so a manual run and a
- * scheduled run can never diverge in behaviour.
+ * scheduled run can never diverge in behaviour. It does not consult
+ * lastSuccessAt either — an on-demand run is always intentional.
  */
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runProcess } from "@/lib/processes/registry";
-import { parseSchedule, isRunDue } from "@/lib/processes/schedule";
+import {
+  parseSchedule,
+  isRunDue,
+  SUCCESSFUL_RUN_STATUSES,
+} from "@/lib/processes/schedule";
 
 export const dynamic = "force-dynamic";
 // Belt-and-braces alongside the no-store fetch in createAdminClient(): this
@@ -58,23 +70,71 @@ export async function GET(request: Request) {
   }
 
   const now = new Date();
-  const results: Array<{ key: string; ran: boolean; result?: unknown }> = [];
+  const results: Array<{
+    key: string;
+    ran: boolean;
+    lastSuccessAt?: string | null;
+    result?: unknown;
+    error?: string;
+  }> = [];
 
   for (const row of data ?? []) {
-    const schedule = parseSchedule(
-      (row.config as Record<string, unknown> | null)?.schedule
-    );
-    // A process with no valid schedule config defaults to hourly rather than
-    // silently never running — fail toward "runs too often" (harmless, since
-    // discovery + guards are idempotent) not "never runs at all".
-    const due = isRunDue(schedule ?? { frequency: "hourly" }, now);
-    if (!due) {
-      results.push({ key: row.key, ran: false });
-      continue;
+    // One process must never take down another on the same tick — a throw from
+    // the lookup, the claim, or the runner is contained here and reported.
+    try {
+      const schedule = parseSchedule(
+        (row.config as Record<string, unknown> | null)?.schedule
+      );
+      // A process with no valid schedule config defaults to hourly rather than
+      // silently never running — fail toward "runs too often" (harmless, since
+      // discovery + guards are idempotent) not "never runs at all".
+      const lastSuccessAt = await getLastSuccessAt(admin, row.key);
+      const due = isRunDue(schedule ?? { frequency: "hourly" }, now, lastSuccessAt);
+      if (!due) {
+        results.push({
+          key: row.key,
+          ran: false,
+          lastSuccessAt: lastSuccessAt?.toISOString() ?? null,
+        });
+        continue;
+      }
+      const result = await runProcess(row.key, "cron");
+      results.push({
+        key: row.key,
+        ran: true,
+        lastSuccessAt: lastSuccessAt?.toISOString() ?? null,
+        result,
+      });
+    } catch (err) {
+      results.push({
+        key: row.key,
+        ran: false,
+        error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      });
     }
-    const result = await runProcess(row.key, "cron");
-    results.push({ key: row.key, ran: true, result });
   }
 
   return NextResponse.json({ status: "ok", checkedAt: now.toISOString(), results });
+}
+
+/**
+ * started_at of the most recent run that completed its work, or null if the
+ * process has never had one. Served by the existing
+ * process_runs(process_key, started_at desc) index.
+ */
+async function getLastSuccessAt(
+  admin: ReturnType<typeof createAdminClient>,
+  processKey: string
+): Promise<Date | null> {
+  const { data, error } = await admin
+    .from("process_runs")
+    .select("started_at")
+    .eq("process_key", processKey)
+    .in("status", SUCCESSFUL_RUN_STATUSES as unknown as string[])
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`getLastSuccessAt(${processKey}): ${error.message}`);
+  return data?.started_at ? new Date(data.started_at as string) : null;
 }
