@@ -199,6 +199,20 @@ async function mintTokenViaGraphQL(): Promise<CachedToken> {
 const MAX_TRANSPORT_RETRIES = 3;
 const TRANSPORT_BACKOFF_MS = [300, 1_000, 3_000] as const;
 
+export interface GqlOptions {
+  /**
+   * Abort a single request after this many ms. A timeout surfaces as a
+   * TransportError, so the existing backoff/retry path covers it.
+   *
+   * Optional and off by default: the nightly sync has always run without one
+   * and adding a deadline to it is a behaviour change that belongs in its own
+   * change. Callers that fan out over many orders — the price-verification
+   * backtest — pass one, because there a single hung request otherwise stalls
+   * the whole walk with no error.
+   */
+  timeoutMs?: number;
+}
+
 /**
  * Issues a GraphQL POST and returns `data`. Handles transparent re-auth on
  * AuthExpiredError, exponential backoff on TransportError, and Retry-After
@@ -206,14 +220,15 @@ const TRANSPORT_BACKOFF_MS = [300, 1_000, 3_000] as const;
  */
 export async function gqlQuery<T>(
   query: string,
-  variables?: Record<string, unknown>
+  variables?: Record<string, unknown>,
+  options?: GqlOptions
 ): Promise<T> {
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const token = await getToken();
     try {
-      return await rawGqlFetch<T>(query, variables, token);
+      return await rawGqlFetch<T>(query, variables, token, options);
     } catch (err) {
       if (err instanceof AuthExpiredError) {
         // Re-auth once; if it still fails, surface as PermanentAuthError.
@@ -223,7 +238,7 @@ export async function gqlQuery<T>(
           throw new PermanentAuthError("re-auth failed", "auth/permanent");
         });
         try {
-          return await rawGqlFetch<T>(query, variables, fresh.token);
+          return await rawGqlFetch<T>(query, variables, fresh.token, options);
         } catch (e2) {
           if (e2 instanceof AuthExpiredError) {
             throw new PermanentAuthError(
@@ -260,9 +275,16 @@ export async function gqlQuery<T>(
 async function rawGqlFetch<T>(
   query: string,
   variables: Record<string, unknown> | undefined,
-  bearer: string | null
+  bearer: string | null,
+  options?: GqlOptions
 ): Promise<T> {
   let res: Response;
+  // Only wire up an AbortController when a deadline was actually asked for,
+  // so the no-timeout path stays byte-for-byte what the sync has always run.
+  const controller = options?.timeoutMs ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), options!.timeoutMs)
+    : null;
   try {
     res = await fetch(FT_URL, {
       method: "POST",
@@ -271,11 +293,17 @@ async function rawGqlFetch<T>(
         ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
       },
       body: JSON.stringify({ query, variables }),
+      ...(controller ? { signal: controller.signal } : {}),
     });
   } catch (e) {
+    const aborted = e instanceof Error && e.name === "AbortError";
     throw new TransportError(
-      `network error: ${e instanceof Error ? e.message : String(e)}`
+      aborted
+        ? `request timed out after ${options!.timeoutMs}ms`
+        : `network error: ${e instanceof Error ? e.message : String(e)}`
     );
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
   if (res.status === 429) {

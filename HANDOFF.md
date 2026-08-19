@@ -417,3 +417,153 @@ whose consignor is already set.
 (`019ff95b-e763-b796-2f35-26c24b5ea7a2`), not the entity id
 (`019ff95b-e75a-…`). The two differ, the rules table stores role ids too, and
 mixing them up fails silently — the write succeeds and points at nothing usable.
+
+## Retailer Price Verification tool (2026-08-19)
+
+New Tools entry at `/tools/price-verification`, sitting alongside Auto FT Consignor
+Update. Verifies FreshTrack order line prices against the weekly Coles and
+Woolworths quote extracts. **It never writes to FreshTrack** — there is no
+mutation in this feature's code or in anything it calls.
+
+### The decision that shaped everything: Postgres, not live GraphQL
+
+The sprint doc assumed the tool would walk live GraphQL, and carried a whole
+acceptance criterion about pacing, timeouts and checkpoint/resume because both
+MCP routes to FreshTrack hung after bursts of ~6 queries during scoping.
+
+That turned out to be unnecessary for the tool itself. The nightly sync
+(`orderSync.ts` / `orderItemSync.ts`, migrations 00010/00016) already lands every
+field the comparison needs, and it has already resolved each trap the sprint
+warned about:
+
+| Sprint trap | Already handled by |
+|---|---|
+| `entity.consigneeId`, not entity `id` | `ft_orders.consignee_ft_id` to `ft_entities.consignee_freshtrack_id` |
+| orders are versioned; use the highest | `ft_orders.latest_order_version_ft_id`; items only exist for that version |
+| `filterArchived: true` hangs the server | `ft_orders.is_archived`, already synced |
+| datetime offsets / local-day bucketing | `scheduled_delivery_on`, bucketed to Brisbane here |
+
+So a whole week of orders is **three indexed queries instead of ~2N GraphQL
+calls**. The rate-limit problem is removed rather than mitigated.
+
+**The cost is coverage, and it is not silent.** The sync only holds orders from
+about **2026-06-30** onward. `checkCoverage()` runs before every verification and
+records its verdict on the run; a window the sync does not hold is reported as
+"not synced", never as a reassuring "0 orders found".
+
+For historical weeks there is `scripts/price-verification-backtest.ts`, which
+walks live GraphQL with the full discipline (>=1.1s pacing, 15s per-request
+timeout, backoff via the shared transport, checkpoint after every order).
+**This script has not been run** — it needs `FT_GRAPHQL_EMAIL` /
+`FT_GRAPHQL_PASSWORD`, which were not available in the build session. It is the
+only unexercised code in the feature.
+
+### Facts confirmed against the real files and the live database
+
+- **Coles** `.xlsx`: 62 rows to 434 per-day lines, 6 DCs, 0 parse warnings.
+  Excel serial 46119 = 2026-04-07, as the sprint said.
+- **Woolworths** Weekly PQF: an HTML page from the Salesforce partner hub named
+  `.xls`. It opens with a `<script>` block, not `<table>`, so byte-sniffing is
+  not enough — SheetJS's HTML path reads it. 16 rows to 112 lines, 5 DCs.
+- **Woolworths prices are per weekday, not flat.** The sheet has a two-row
+  header where the Price and Quantity blocks *repeat the same seven dated
+  column labels*. Matching dated headers alone reads quantities as prices; the
+  group row ("Price" / "Quantity") is what disambiguates. Both retailers are
+  normalised to one line per **article x DC x day**, so a mid-week price change
+  is honoured rather than averaged away.
+- **Retailer is detected from header content, never the filename** — these files
+  get renamed constantly.
+
+### Two findings that change how the report should be read
+
+1. **Most orders carry no line price until they are Invoiced.** Live counts:
+   Invoiced 1475/1633 lines priced (~90%), Ordered 280/1067 (~26%), WWG- Load
+   Moved 0/466. `raw_json` has no price either, so this is FreshTrack, not a
+   sync mapping bug. Such lines report `no_order_price` — explicitly *not* a
+   mismatch — and an order where every line is unpriced reads "no line on this
+   order carries a price yet". Practically, verification bites at Invoiced.
+
+2. **The "Approved?" flag cannot be a hard filter.** In the 7-13 Apr Coles
+   sample only **5 of 13** Coles Parkinson rows are `Checked`, yet the papaya and
+   passionfruit rows carry real prices the orders were placed against. Treating
+   unapproved rows as "no quote" (the sprint's proposed D4) would leave most of
+   Parkinson unverifiable and would not reproduce the manually-verified 19/19
+   baseline. So it is a **setting**, `unapproved_quotes`, defaulting to `use`.
+   A blank price is separate and always means "cannot verify".
+
+### Verified end-to-end against live data
+
+Real Coles orders for 2026-08-03..09 (83 orders / 190 lines pulled from
+`ft_orders` + `ft_order_items`), against a quote built from the actual prices
+with **two articles deliberately perturbed**:
+
+```
+Orders in window: 83
+  verified 24 · mismatched 13 · partial 0 · no usable quote 44 · skipped 2 · unmapped 0
+Lines checked: 189 — matched 96, mismatched 14, not checkable 79
+5 order(s) flagged as duplicates
+mismatched articles: ["2512240","5512451"]   <- exactly the two that were perturbed
+```
+
+- The six buckets partition the total exactly (24+13+0+44+2+0 = 83).
+- No false positives and no misses: only the injected errors were flagged.
+- The 5 duplicates are all **Coles Melbourne** parallel Ordered/Invoiced series —
+  precisely the EDI re-import pattern the sprint predicted. All members are
+  reported; the later ones carry `is_duplicate` so nothing is double-counted.
+- CSV: 191 rows = 189 line rows + one row each for the two Cancelled orders,
+  which appear with their reason rather than being dropped.
+
+### Access control (the admin section)
+
+New generic `tool_access` table keyed `(tool_key, user_id)`, plus
+`lib/tools/registry.ts` marking which tools are gated. The rule, in
+`lib/tools/access.ts` so no route can drift from it:
+
+- hub_admin — always allowed, and the only role that can grant
+- holds a `tool_access` row — allowed
+- internal (admin/staff) and the tool is not gated — allowed
+- anyone else — denied
+
+`retailer_price_verification` is gated (quote pricing is commercially
+sensitive); `consignor_auto_assign` is not, so **who can see the existing tool
+did not change**. The Tools index now filters to what the caller can actually
+open. Grants are managed on the tool's own **Access** tab, which lists only
+Mackays-internal accounts — granting a grower-side account would create a row
+the page then refuses.
+
+### Not built, and why
+
+- **Writing "Price Verified" back to FreshTrack (sprint D3).** That order state
+  does not exist in FreshTrack yet and which transitions are legal is undecided.
+  `price_verification_settings.write_back_state_ft_id` is reserved and nothing
+  reads it. When built it needs an explicit apply flag plus an allowlist of
+  transitions, mirroring how `consignor_auto_assign` gates its writes.
+- **Coles DPO9745 (D5).** No confirmed entity. Seeded with `entity_code = NULL`;
+  its orders report as "DC not mapped" rather than being guessed or dropped.
+- **WOW Sydney RDC 1986 = Minchinbury (D6).** Mapped to WOWMI on the sprint's
+  assumption, flagged in the row's `notes` as unconfirmed with the WOW team.
+- Note the sprint's `ADE9541 -> COLAD` alternative: **no COLAD entity exists** in
+  `ft_entities`. Mapped to COLSA, which is the active one.
+
+### Design-language divergence (flagged, not acted on)
+
+`docs/mackays-ui-kit.md` (in grower-portal) specifies Tailwind v4 with no config
+file and shadcn on Base UI. mm-hub ships Tailwind v3 with `tailwind.config.ts`
+and Radix-based shadcn, with its own named brand tokens (`forest`, `bark`,
+`soil`, `sand`, `warmwhite`, `canopy`, `harvest`, `blaze`). This tool follows
+**mm-hub's shipped conventions** so it sits beside the consignor tool without
+looking foreign. Reconciling mm-hub to the kit is a separate piece of work.
+
+### Files
+
+- `supabase/migrations/00023_retailer_price_verification.sql` — applied to
+  `uqzfkhsdyeokwnkpcxui`. Additive only; no existing table touched.
+- `lib/priceVerification/` — `parseQuote` (both formats), `compare` (pure engine,
+  no I/O, shared by app and backtest), `dbOrderSource`, `graphqlOrderSource`,
+  `run`, `report`, `settings`, `types`.
+- `lib/tools/` — `registry.ts`, `access.ts`.
+- `app/api/tools/price-verification/` — quotes, runs, settings, dc-map, access.
+- `app/(grower-portal)/tools/price-verification/` — page + client.
+- `scripts/price-verification-backtest.ts` — historical windows (unrun).
+- 68 new tests. Full suite 297 passing, `tsc --noEmit` clean, `next lint` clean,
+  `next build` clean.
