@@ -11,6 +11,7 @@
  * writes.
  */
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { compareOrders, buildQuoteIndex } from "./compare";
 import { checkCoverage, fetchOrdersForWindow } from "./dbOrderSource";
@@ -164,10 +165,18 @@ async function persistResults(runId: string, orders: ComparedOrder[]): Promise<v
   for (let i = 0; i < orders.length; i += CHUNK) {
     const batch = orders.slice(i, i + CHUNK);
 
-    const { data: inserted, error } = await admin
+    // Ids are minted here rather than read back from the insert. Attaching
+    // lines by the position of the returned rows would quietly hang every
+    // line off the wrong order if PostgREST ever returned them in another
+    // order; generating the ids makes the association explicit instead of
+    // depending on that.
+    const rowIds = batch.map(() => randomUUID());
+
+    const { error } = await admin
       .from("price_verification_orders")
       .insert(
-        batch.map((o) => ({
+        batch.map((o, idx) => ({
+          id: rowIds[idx],
           run_id: runId,
           order_ft_id: o.orderFtId,
           order_no: o.orderNo,
@@ -185,15 +194,13 @@ async function persistResults(runId: string, orders: ComparedOrder[]): Promise<v
           lines_mismatched: o.linesMismatched,
           lines_no_quote: o.linesNoQuote,
         }))
-      )
-      .select("id");
+      );
     if (error) throw new Error(`could not save order results: ${error.message}`);
 
-    // insert() returns rows in the order supplied, so index alignment holds.
     const lineRows = batch.flatMap((o, idx) =>
       o.lines.map((l) => ({
         run_id: runId,
-        order_row_id: inserted![idx]!.id as string,
+        order_row_id: rowIds[idx]!,
         line_no: l.lineNo,
         item_no: l.itemNo,
         description: l.description,
