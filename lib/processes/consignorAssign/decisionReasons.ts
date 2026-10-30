@@ -17,6 +17,11 @@ export const DECISION_SKIP_REASONS: string[] = [
   "unmapped_crop",
   "multiple_not_configured",
   "no_rule_matched",
+  // Migration 00024: some products on the order are "leave blank" (green
+  // fruit) and others have a consignor. Its sibling `left_blank_by_rule` —
+  // every product left blank — is the expected outcome and deliberately NOT
+  // listed here.
+  "mixed_leave_blank",
   // Retired by Stage A of the MULTIPLE work: an order whose crops resolve to
   // different consignors now takes the MULTIPLE header instead of being
   // skipped. Kept in the list so the ~47 historical rows still surface and
@@ -25,7 +30,9 @@ export const DECISION_SKIP_REASONS: string[] = [
 ];
 
 export const DECISION_REASON_LABELS: Record<string, string> = {
-  unmapped_crop: "Crop on the order has no rule",
+  // Slug predates product rules; it now means a crop OR a product.
+  unmapped_crop: "A product on the order has no rule",
+  mixed_leave_blank: "Some products stay blank, others have a consignor",
   multiple_not_configured: "Different consignors, MULTIPLE not configured",
   no_rule_matched: "No matching rule",
   ambiguous_multi_crop: "Mixed crops, different consignors (pre-MULTIPLE)",

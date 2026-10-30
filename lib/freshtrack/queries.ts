@@ -386,6 +386,32 @@ export const Q_PRODUCTS_ALL = /* GraphQL */ `
   }
 `;
 
+/**
+ * The rule form's product picker (migration 00024): the full catalogue with
+ * the flags needed to hide retired products, plus crop names for grouping.
+ * Same argument-free `products` field as Q_PRODUCTS_ALL.
+ */
+export const Q_PRODUCTS_FOR_RULES = /* GraphQL */ `
+  query ProductsForRules($cropLimit: Int!) {
+    products {
+      id code name cropId isActive isSellable
+    }
+    crops(filterLimit: $cropLimit) {
+      id code name
+    }
+  }
+`;
+
+export interface FTProductForRules extends FTProductMini {
+  isActive: boolean;
+  isSellable: boolean;
+}
+
+export interface RspProductsForRules {
+  products: FTProductForRules[];
+  crops: FTCrop[];
+}
+
 // --- OrderStateNode (stable codes; drives the cancellation guard) --------
 // Codes are stable strings — prefer them over UUIDs in config. Observed set:
 // OR Ordered, SH Shipped, RI Ready to Invoice, IN Invoiced, RE Remitted,
@@ -511,15 +537,19 @@ export interface FTOrderInput {
   comment: string;
 }
 
+/** The header fields the Tools processes are allowed to write, one at a time. */
+export type OrderHeaderOverride =
+  | { consignorId: FTUuid | null; marketerId?: never }
+  | { marketerId: FTUuid | null; consignorId?: never };
+
 /**
- * Build a full OrderInput from a live FTOrder fetch, overriding only
- * consignorId. Accepts null so the same helper serves both assignment and
- * the "Unassign" action in the activity log.
+ * Build a full OrderInput from a live FTOrder fetch, overriding exactly ONE
+ * header field — consignorId (Auto FT Consignor Update) or marketerId (the
+ * Woolworths marketer fill). Every other field is the fetch's own value,
+ * because updateOrder nulls anything omitted. Accepts null so the same helper
+ * serves the undo actions in the activity log.
  */
-export function orderToInputWithConsignor(
-  o: FTOrder,
-  consignorId: string | null
-): FTOrderInput {
+export function orderToInput(o: FTOrder, override: OrderHeaderOverride): FTOrderInput {
   return {
     priority: o.priority,
     type: o.type,
@@ -527,10 +557,10 @@ export function orderToInputWithConsignor(
     orderNo: o.orderNo,
     poNo: o.poNo,
     salesOrderNo: o.salesOrderNo,
-    consignorId,
+    consignorId: "consignorId" in override ? (override.consignorId ?? null) : o.consignorId,
     consigneeId: o.consigneeId,
     marketAreaId: o.marketAreaId,
-    marketerId: o.marketerId,
+    marketerId: "marketerId" in override ? (override.marketerId ?? null) : o.marketerId,
     supplierId: o.supplierId,
     deliveryContactId: o.deliveryContactId,
     shedId: o.shedId,
@@ -543,8 +573,17 @@ export function orderToInputWithConsignor(
   };
 }
 
-export const Q_UPDATE_ORDER_CONSIGNOR = /* GraphQL */ `
-  mutation UpdateOrderConsignor($orderId: UUID!, $orderData: OrderInput!) {
+/** The consignor-only form, kept for its existing callers. */
+export function orderToInputWithConsignor(
+  o: FTOrder,
+  consignorId: string | null
+): FTOrderInput {
+  return orderToInput(o, { consignorId });
+}
+
+/** updateOrder, full-object replace — used for both consignor and marketer writes. */
+export const Q_UPDATE_ORDER = /* GraphQL */ `
+  mutation UpdateOrderHeader($orderId: UUID!, $orderData: OrderInput!) {
     updateOrder(orderId: $orderId, orderData: $orderData) {
       order {
         id priority type orderNo salesOrderNo poNo comment info
@@ -556,6 +595,9 @@ export const Q_UPDATE_ORDER_CONSIGNOR = /* GraphQL */ `
     }
   }
 `;
+
+/** The original name, kept so nothing that imports it breaks. */
+export const Q_UPDATE_ORDER_CONSIGNOR = Q_UPDATE_ORDER;
 
 export interface RspUpdateOrder {
   updateOrder: { order: FTOrder };
@@ -700,6 +742,78 @@ export const Q_ORDER_ITEMS_BY_ORDER_VERSION = /* GraphQL */ `
   }
 `;
 
+// --- Woolworths marketer fill (lib/processes/marketerFill) ---------------
+
+/**
+ * The entity tree the marketer fill needs: which customers sit under a
+ * customer group (a parent entity such as WOWGL, Woolworths Head Office), and
+ * the marketer ROLE id of the marketer to write. No filterIsActive, for the
+ * same reason as Q_ENTITIES_FOR_RULE_VALIDATION. Verified live 2026-10-30:
+ * WOWGL has nine DCs (WOWBR, WOWTO, WOWTA, WOWMI, WOWTR, WOWWO, WOWWY, WOWAD,
+ * WOWRO) and every non-archived Woolworths order carries
+ * parentConsigneeId = WOWGL's consignee role.
+ */
+export const Q_ENTITIES_FOR_MARKETER_SCOPE = /* GraphQL */ `
+  query EntitiesForMarketerScope($limit: Int!) {
+    entities(filterLimit: $limit) {
+      id code orgName
+      parentId
+      parent { id code }
+      consigneeId
+      marketerId isMarketerActive
+    }
+  }
+`;
+
+export interface FTScopeEntity {
+  id: FTUuid;
+  code: string;
+  orgName: string;
+  parentId: FTUuid | null;
+  parent: FTEntityParent | null;
+  consigneeId: FTUuid | null;
+  marketerId: FTUuid | null;
+  isMarketerActive: boolean;
+}
+
+/**
+ * Marketer-fill discovery: the in-scope customers' orders, in the ticked
+ * states only (filterStateIds), so cancelled and invoiced orders are never
+ * even fetched. Marketer is filtered client-side — FreshTrack has no
+ * marketer filter on orders.
+ */
+export const Q_ORDERS_FOR_MARKETER_FILL = /* GraphQL */ `
+  query OrdersForMarketerFill(
+    $consigneeIds: [UUID!]
+    $stateIds: [UUID!]
+    $limit: Int!
+    $deliveryStart: DateTime
+    $deliveryEnd: DateTime
+  ) {
+    orders(
+      filterConsigneeIds: $consigneeIds
+      filterStateIds: $stateIds
+      filterLimit: $limit
+      filterScheduledDeliveryOnStart: $deliveryStart
+      filterScheduledDeliveryOnEnd: $deliveryEnd
+      filterArchived: false
+    ) {
+      id orderNo marketerId consignorId consigneeId stateId isArchived scheduledDeliveryOn
+    }
+  }
+`;
+
+export interface FTMarketerCandidate {
+  id: FTUuid;
+  orderNo: string;
+  marketerId: FTUuid | null;
+  consignorId: FTUuid | null;
+  consigneeId: FTUuid | null;
+  stateId: FTUuid;
+  isArchived: boolean;
+  scheduledDeliveryOn: FTDateTime | null;
+}
+
 // --- Convenience: query response wrapper types ---------------------------
 
 export interface RspEntities {
@@ -743,4 +857,10 @@ export interface RspOrderVersions {
 }
 export interface RspOrderItems {
   orderItems: FTOrderItem[];
+}
+export interface RspScopeEntities {
+  entities: FTScopeEntity[];
+}
+export interface RspMarketerCandidates {
+  orders: FTMarketerCandidate[];
 }

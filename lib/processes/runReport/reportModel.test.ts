@@ -233,3 +233,17 @@ describe("buildReportModel", () => {
     });
   });
 });
+
+describe("buildReportModel — product rules label (migration 00024)", () => {
+  it("names the product, not 'any crop', for a product rule", () => {
+    const model = buildReportModel({
+      ...baseRaw(),
+      assignProcessMode: "apply",
+      appliedSincePeriod: [
+        { targetRef: "5031001", consigneeName: "Woolworths Townsville", consignorCode: "SQBRL", ruleId: "rule-p", createdAt: "2026-10-30T01:00:00Z" },
+      ],
+      ruleLabelsById: new Map([["rule-p", { consigneeEntityCode: "WOWTO", cropName: null, productLabel: "910111 Ripe collars" }]]),
+    });
+    expect(model.assignments[0].ruleLabel).toBe("WOWTO + 910111 Ripe collars");
+  });
+});
