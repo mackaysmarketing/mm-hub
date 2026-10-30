@@ -23,6 +23,10 @@ describe("canUnassignConsignor", () => {
     expect(canUnassignConsignor(marketerApplied)).toBe(false);
   });
 
+  it("checks the process, not just the action name", () => {
+    expect(canUnassignConsignor({ ...consignorApplied, process_key: "marketer_auto_fill" })).toBe(false);
+  });
+
   it("refuses rows that wrote nothing, and the undo rows themselves", () => {
     expect(canUnassignConsignor({ ...consignorApplied, status: "skipped" })).toBe(false);
     expect(canUnassignConsignor({ ...consignorApplied, status: "proposed" })).toBe(false);
@@ -33,6 +37,10 @@ describe("canUnassignConsignor", () => {
 describe("canUndoMarketerFill", () => {
   it("allows only a marketer this tool actually set", () => {
     expect(canUndoMarketerFill(marketerApplied)).toBe(true);
+  });
+
+  it("checks the process, not just the action name", () => {
+    expect(canUndoMarketerFill({ ...marketerApplied, process_key: "consignor_auto_assign" })).toBe(false);
   });
 
   it("refuses consignor rows, rows that wrote nothing, and rows with no marketer recorded", () => {

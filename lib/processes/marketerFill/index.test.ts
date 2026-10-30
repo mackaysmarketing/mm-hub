@@ -110,7 +110,7 @@ describe("runMarketerAutoFill", () => {
 
     const result = await runMarketerAutoFill(ctx("apply"));
 
-    expect(mockApply).toHaveBeenCalledWith("1", "m-mackm");
+    expect(mockApply).toHaveBeenCalledWith("1", "m-mackm", expect.any(Function));
     expect(result).toMatchObject({ actionsApplied: 1, actionsSkipped: 1, actionsFailed: 1 });
     expect(logged().map((r) => [r.targetRef, r.status, r.skipReason ?? null, r.error ?? null])).toEqual([
       ["501", "applied", null, null],
@@ -149,5 +149,36 @@ describe("runMarketerAutoFill", () => {
     freshtrack(Array.from({ length: 2000 }, (_, i) => ftOrder(String(i), { marketerId: "m-mackm" })));
     const result = await runMarketerAutoFill(ctx("dry_run"));
     expect(result.payload).toMatchObject({ discovery_limit_hit: true });
+  });
+});
+
+describe("runMarketerAutoFill — changes between discovery and write", () => {
+  it("passes a re-check that refuses an order cancelled or moved out of scope meanwhile", async () => {
+    freshtrack([ftOrder("1")]);
+    mockApply.mockResolvedValueOnce({ outcome: "no_longer_eligible", reason: "state_not_assignable", error: "x" } as never);
+    const result = await runMarketerAutoFill(ctx("apply"));
+    const recheck = mockApply.mock.calls[0][2]!;
+    const fresh = { consigneeId: "c-wowmi", isArchived: false, stateId: "s-or" } as never;
+    expect(recheck(fresh)).toBeNull();
+    expect(recheck({ ...(fresh as object), stateId: "s-ca" } as never)).toBe("state_not_assignable");
+    expect(recheck({ ...(fresh as object), consigneeId: "c-colme" } as never)).toBe("out_of_scope_customer");
+    expect(recheck({ ...(fresh as object), isArchived: true } as never)).toBe("archived");
+    expect(result).toMatchObject({ actionsApplied: 0, actionsSkipped: 1 });
+    expect(logged()[0]).toMatchObject({ status: "skipped", skipReason: "changed_since_discovery" });
+  });
+
+  it("uses the configured groups and window, not the defaults", async () => {
+    freshtrack([]);
+    await runMarketerAutoFill(ctx("dry_run", { ...MARKETER_DEFAULTS, customer_group_codes: ["NOPE"] })).catch((e) => e);
+    expect(discoveryVars).toBeUndefined(); // unknown group stops the run
+    const now = Date.now();
+    await runMarketerAutoFill(ctx("dry_run", { ...MARKETER_DEFAULTS, discovery_lookback_days: 10 }));
+    const start = Date.parse(String(discoveryVars?.deliveryStart));
+    expect(Math.round((now - start) / 86_400_000)).toBe(10);
+  });
+
+  it("the default window reaches the oldest open blank-marketer PO (due 24 Jul 2026) from 30 Oct 2026", () => {
+    const start = Date.parse("2026-10-30T00:00:00Z") - MARKETER_DEFAULTS.discovery_lookback_days * 86_400_000;
+    expect(start).toBeLessThan(Date.parse("2026-07-24T00:00:00Z"));
   });
 });

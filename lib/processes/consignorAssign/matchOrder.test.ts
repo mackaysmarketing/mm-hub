@@ -98,6 +98,14 @@ describe("needsLineResolution", () => {
 });
 
 describe("matchOrder — precedence tier 1: customer + crop beats everything", () => {
+  it("a customer's own crop rule beats an any-customer rule for the same crop", () => {
+    const globalPapaya = rule({ id: "global-papaya", cropId: CROP_PAPAYA, consignorFreshtrackId: "x", consignorEntityCode: "X" });
+    expect(matchOrder([globalPapaya, ...RULES], COLEC, lines(CROP_PAPAYA))).toEqual({
+      kind: "matched",
+      rule: RULES[2],
+    });
+  });
+
   it("COLEC + Papaya matches COLEC's own rule, not any global fallback", () => {
     expect(matchOrder(RULES, COLEC, lines(CROP_PAPAYA))).toEqual({
       kind: "matched",
@@ -319,9 +327,9 @@ const WOW_RULES: AssignmentRule[] = [
 const byId = (id: string) => WOW_RULES.find((r) => r.id === id)!;
 
 describe("needsLineResolution — product rules", () => {
-  it("is true for a customer with a product rule", () => {
-    const customerOnly = WOW_RULES.filter((r) => r.id !== "global-greencollar-blank");
-    expect(needsLineResolution(customerOnly, WOWTO)).toBe(true);
+  it("is true for a customer whose only specific rules are product rules", () => {
+    const productOnly = [byId("wowto-green15-blank"), byId("wowto-ripecollar-sqbr")];
+    expect(needsLineResolution(productOnly, WOWTO)).toBe(true);
   });
 
   it("is true for every customer once an any-customer product rule exists", () => {
@@ -378,11 +386,15 @@ describe("matchOrder — product precedence", () => {
     });
   });
 
-  it("an unknown-crop product still falls to the customer default", () => {
+  it("a crop-less product with no product rule is ignored, exactly as before product rules", () => {
+    // Only such lines: nothing resolves (was no_rule before 00024 too).
     expect(matchOrder(WOW_RULES, WOWBR, [{ productId: "prod-unknown", cropId: null }])).toEqual({
-      kind: "matched",
-      rule: byId("wowbr-default"),
+      kind: "no_rule",
     });
+    // Beside a mapped line: the mapped line decides; no unmapped, no MULTIPLE.
+    expect(
+      matchOrder(RULES, COLEC, [...lines(CROP_PAPAYA), { productId: "prod-unknown", cropId: null }])
+    ).toEqual({ kind: "matched", rule: RULES[2] });
   });
 });
 

@@ -27,6 +27,7 @@ import {
 export type ApplyResult =
   | { outcome: "applied"; before: FTOrder; after: FTOrder }
   | { outcome: "already_assigned_by_other"; current: FTOrder }
+  | { outcome: "no_longer_eligible"; reason: string; error: string; current: FTOrder }
   | { outcome: "failed"; error: string; before?: FTOrder; after?: FTOrder };
 
 type HeaderField = "consignorId" | "marketerId";
@@ -68,7 +69,9 @@ export async function unassignConsignor(orderId: string): Promise<ApplyResult> {
  */
 export async function applyMarketer(
   orderId: string,
-  targetMarketerId: string
+  targetMarketerId: string,
+  /** Re-checks the FRESH order (scope, state, archived); a reason = do not write. */
+  stillEligible?: (fresh: FTOrder) => string | null
 ): Promise<ApplyResult> {
   const before = await fetchOrderById(orderId);
   if (!before) {
@@ -77,6 +80,8 @@ export async function applyMarketer(
   if (before.marketerId !== null) {
     return { outcome: "already_assigned_by_other", current: before };
   }
+  const reason = stillEligible?.(before) ?? null;
+  if (reason) return { outcome: "no_longer_eligible", reason, error: `no longer eligible: ${reason}`, current: before };
   return writeHeaderAndVerify(orderId, before, "marketerId", targetMarketerId);
 }
 
@@ -115,7 +120,14 @@ async function writeHeaderAndVerify(
     return { outcome: "failed", error: `updateOrder failed: ${message}`, before };
   }
 
-  const after = await fetchOrderById(orderId);
+  let after: FTOrder | null;
+  try {
+    after = await fetchOrderById(orderId);
+  } catch (err) {
+    // The write was sent; return (not throw) so the caller still logs it.
+    const message = err instanceof Error ? err.message : String(err);
+    return { outcome: "failed", error: `write sent but the check after it failed: ${message}`, before };
+  }
   if (!after) {
     return {
       outcome: "failed",

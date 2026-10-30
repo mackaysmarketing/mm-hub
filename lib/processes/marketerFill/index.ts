@@ -146,13 +146,27 @@ export async function runMarketerAutoFill(ctx: {
       continue;
     }
 
-    const result = await applyMarketer(order.id, scope.marketerRoleId);
+    const result = await applyMarketer(order.id, scope.marketerRoleId, (fresh) =>
+      checkMarketerCandidate(
+        {
+          marketerId: null, // checked by applyMarketer itself
+          consigneeId: fresh.consigneeId,
+          isArchived: fresh.isArchived,
+          stateCode: stateCodeById.get(fresh.stateId) ?? null,
+        },
+        inScope,
+        cfg.assignable_state_codes
+      )
+    );
     if (result.outcome === "applied") {
       applied++;
       await logAction({ ...base, status: "applied", after });
     } else if (result.outcome === "already_assigned_by_other") {
       skipped++;
       await logAction({ ...base, status: "skipped", skipReason: "already_assigned_by_other", after: {} });
+    } else if (result.outcome === "no_longer_eligible") {
+      skipped++;
+      await logAction({ ...base, status: "skipped", skipReason: "changed_since_discovery", after: { reason: result.reason } });
     } else {
       failed++;
       await logAction({ ...base, status: "failed", error: result.error, after: {} });

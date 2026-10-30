@@ -149,12 +149,22 @@ export function matchOrder(
   for (const line of lines) {
     if (seen.has(line.productId)) continue;
     seen.add(line.productId);
+    if (line.cropId === null) {
+      // A product with no crop (or missing from the catalogue) was ignored
+      // before 00024. Only a rule naming that product may decide it now;
+      // otherwise it is still ignored, so existing outcomes cannot change.
+      const productRule =
+        rules.find((r) => r.consigneeFreshtrackId === consigneeId && r.productId === line.productId) ??
+        rules.find((r) => r.consigneeFreshtrackId === null && r.productId === line.productId);
+      if (productRule) matchedRules.push(productRule);
+      continue;
+    }
     const rule = ruleFor(rules, consigneeId, line);
     if (rule) matchedRules.push(rule);
     else anyUnmapped = true;
   }
 
-  if (matchedRules.length === 0) return { kind: "no_rule" }; // every product is unmapped
+  if (matchedRules.length === 0) return { kind: "no_rule" }; // nothing on the order resolved
   const matchedRuleIds = uniq(matchedRules.map((r) => r.id));
 
   // Checked first, deliberately — see the MatchResult note.

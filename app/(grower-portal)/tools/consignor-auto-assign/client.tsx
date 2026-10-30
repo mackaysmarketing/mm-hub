@@ -205,6 +205,7 @@ const SKIP_REASON_LABEL: Record<string, string> = {
   // Marketer fill
   out_of_scope_customer: "Customer isn't in the marketer fill's groups",
   marketer_already_set: "Marketer already set",
+  changed_since_discovery: "Order changed before the write (state, customer or archived) — left alone",
   no_rule_matched: "No mapping rule for this customer/crop",
   archived: "Order is archived",
   state_not_assignable: "Order state isn't assignable (e.g. cancelled)",

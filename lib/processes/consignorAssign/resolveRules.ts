@@ -31,16 +31,40 @@ const ENTITY_FETCH_LIMIT = 1000;
 
 export const RULE_SELECT =
   "id, consignee_entity_code, consignee_freshtrack_id, crop_id, crop_name, product_id, product_code, product_name, action, consignor_entity_code, consignor_freshtrack_id";
+/** The columns before migration 00024. */
+const LEGACY_RULE_SELECT =
+  "id, consignee_entity_code, consignee_freshtrack_id, crop_id, crop_name, consignor_entity_code, consignor_freshtrack_id";
+/** Postgres "undefined column". */
+const UNDEFINED_COLUMN = "42703";
 
-export async function resolveRules(): Promise<ResolvedRules> {
+/**
+ * Loads the enabled rules. If this code is live before migration 00024 has
+ * been applied, the new columns do not exist yet: fall back to the old ones,
+ * where every rule is an assign rule with no product. That keeps the live
+ * consignor run working through a deploy-before-migrate slip instead of
+ * failing every 5 minutes.
+ */
+export async function loadEnabledRuleRows(): Promise<RuleRow[]> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("consignor_assignment_rules")
     .select(RULE_SELECT)
     .eq("enabled", true);
-  if (error) throw new Error(`resolveRules: load rules: ${error.message}`);
+  if (!error) return (data ?? []) as RuleRow[];
+  if (error.code !== UNDEFINED_COLUMN) throw new Error(`resolveRules: load rules: ${error.message}`);
 
-  const rows = (data ?? []) as RuleRow[];
+  const legacy = await admin
+    .from("consignor_assignment_rules")
+    .select(LEGACY_RULE_SELECT)
+    .eq("enabled", true);
+  if (legacy.error) throw new Error(`resolveRules: load rules: ${legacy.error.message}`);
+  return ((legacy.data ?? []) as Omit<RuleRow, "product_id" | "product_code" | "product_name" | "action">[]).map(
+    (r) => ({ ...r, product_id: null, product_code: null, product_name: null, action: "assign" as const })
+  );
+}
+
+export async function resolveRules(): Promise<ResolvedRules> {
+  const rows = await loadEnabledRuleRows();
   if (rows.length === 0) {
     return { validRules: [], invalidRules: [], consigneeNameById: new Map() };
   }
