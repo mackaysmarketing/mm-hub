@@ -41,6 +41,7 @@ import {
 import { PanelError } from "@/components/panel-error";
 import { safeFetch } from "@/lib/portal-constants";
 import { validateRecipients } from "@/lib/processes/runReport/recipients";
+import { DECISION_REASON_LABELS } from "@/lib/processes/consignorAssign/decisionReasons";
 import {
   parseSchedule,
   describeSchedule,
@@ -61,6 +62,18 @@ const BASE = "/api/tools/consignor-auto-assign";
 const RUN_URL = "/api/processes/consignor_auto_assign/run";
 const REPORT_BASE = `${BASE}/report-settings`;
 const REPORT_RUN_URL = "/api/processes/consignor_auto_assign_report/run";
+const MARKETER_BASE = `${BASE}/marketer`;
+const MARKETER_RUN_URL = "/api/processes/marketer_auto_fill/run";
+
+/** Like safeFetch, but keeps the API's own error message for the page. */
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || `Request failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
 
 // --------------------------------------------------------------- shared types
 
@@ -80,7 +93,12 @@ interface RunRow {
 }
 
 interface InvalidRule {
-  rule: { consignee_entity_code: string; consignor_entity_code: string };
+  rule: {
+    consignee_entity_code: string | null;
+    consignor_entity_code: string | null;
+    product_code?: string | null;
+    crop_name?: string | null;
+  };
   reason: string;
 }
 
@@ -101,14 +119,29 @@ interface OverviewResponse {
 
 interface RuleRow {
   id: string;
-  consignee_entity_code: string | null; // null = any customer (global crop rule)
+  consignee_entity_code: string | null; // null = any customer (global rule)
   consignee_freshtrack_id: string | null;
   crop_id: string | null;
   crop_name: string | null;
-  consignor_entity_code: string;
-  consignor_freshtrack_id: string;
+  // Migration 00024: a rule may target one product, and may leave it blank.
+  product_id: string | null;
+  product_code: string | null;
+  product_name: string | null;
+  action: "assign" | "leave_blank";
+  consignor_entity_code: string | null; // null only for leave_blank
+  consignor_freshtrack_id: string | null;
   enabled: boolean;
   notes: string | null;
+}
+
+interface PickerProduct {
+  id: string;
+  code: string;
+  name: string;
+  cropId: string | null;
+  cropName: string | null;
+  isActive: boolean;
+  isSellable: boolean;
 }
 
 interface ActivityRow {
@@ -168,6 +201,10 @@ interface ReportSettingsResponse {
 
 const SKIP_REASON_LABEL: Record<string, string> = {
   ambiguous_multi_crop: "Mixed crops — no single correct consignor",
+  left_blank_by_rule: "Left blank by rule (e.g. green fruit)",
+  // Marketer fill
+  out_of_scope_customer: "Customer isn't in the marketer fill's groups",
+  marketer_already_set: "Marketer already set",
   no_rule_matched: "No mapping rule for this customer/crop",
   archived: "Order is archived",
   state_not_assignable: "Order state isn't assignable (e.g. cancelled)",
@@ -179,7 +216,7 @@ const SKIP_REASON_LABEL: Record<string, string> = {
 
 function reasonLabel(reason: string | null): string {
   if (!reason) return "—";
-  return SKIP_REASON_LABEL[reason] ?? reason;
+  return SKIP_REASON_LABEL[reason] ?? DECISION_REASON_LABELS[reason] ?? reason;
 }
 
 // ------------------------------------------------------------------- page
@@ -195,6 +232,7 @@ export function ConsignorAutoAssignClient({ isHubAdmin }: { isHubAdmin: boolean 
           <TabsTrigger value="activity">Activity log</TabsTrigger>
           <TabsTrigger value="schedule">Schedule &amp; run</TabsTrigger>
           <TabsTrigger value="reports">Email reports</TabsTrigger>
+          <TabsTrigger value="marketer">Marketer fill</TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
           <OverviewTab isHubAdmin={isHubAdmin} />
@@ -210,6 +248,9 @@ export function ConsignorAutoAssignClient({ isHubAdmin }: { isHubAdmin: boolean 
         </TabsContent>
         <TabsContent value="reports">
           <ReportsTab isHubAdmin={isHubAdmin} />
+        </TabsContent>
+        <TabsContent value="marketer">
+          <MarketerTab isHubAdmin={isHubAdmin} />
         </TabsContent>
       </Tabs>
     </div>
@@ -323,14 +364,16 @@ function OverviewTab({ isHubAdmin }: { isHubAdmin: boolean }) {
         ) : health && health.invalidRules.length === 0 ? (
           <p className="flex items-center gap-2 text-xs text-canopy">
             <CheckCircle2 className="h-3.5 w-3.5" />
-            {health.validCount} of {health.validCount} rules resolve to an active consignor
+            All {health.validCount} rules check out against FreshTrack
           </p>
         ) : (
           <div className="space-y-1.5">
             {health?.invalidRules.map((r, i) => (
               <p key={i} className="flex items-center gap-2 text-xs text-blaze">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                {r.rule.consignee_entity_code} → {r.rule.consignor_entity_code}: {r.reason}
+                {r.rule.consignee_entity_code ?? "Any customer"}
+                {r.rule.product_code ? ` + ${r.rule.product_code}` : r.rule.crop_name ? ` + ${r.rule.crop_name}` : ""} →{" "}
+                {r.rule.consignor_entity_code ?? "leave blank"}: {r.reason}
               </p>
             ))}
           </div>
@@ -383,19 +426,29 @@ function StatCard({
 
 // ----------------------------------------------------------------- Rules
 
+const EMPTY_RULE_FORM: RuleForm = {
+  consignee_entity_code: "",
+  consignee_freshtrack_id: "",
+  crop_id: "",
+  crop_name: "",
+  product_codes: [],
+  action: "assign",
+  consignor_entity_code: "",
+  consignor_freshtrack_id: "",
+  notes: "",
+};
+
+/** What a rule applies to, in one short phrase for the table and dialogs. */
+function ruleTarget(rule: Pick<RuleRow, "product_code" | "product_name" | "crop_name">): string {
+  if (rule.product_code) return `${rule.product_code} · ${rule.product_name ?? ""}`.trim();
+  return rule.crop_name ?? "Any";
+}
+
 function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<RuleRow | null>(null);
-  const [form, setForm] = useState({
-    consignee_entity_code: "",
-    consignee_freshtrack_id: "",
-    crop_id: "",
-    crop_name: "",
-    consignor_entity_code: "",
-    consignor_freshtrack_id: "",
-    notes: "",
-  });
+  const [form, setForm] = useState<RuleForm>(EMPTY_RULE_FORM);
 
   const { data, isLoading, error } = useQuery<RuleRow[]>({
     queryKey: ["tools-consignor-rules"],
@@ -403,15 +456,7 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
   });
 
   function resetForm() {
-    setForm({
-      consignee_entity_code: "",
-      consignee_freshtrack_id: "",
-      crop_id: "",
-      crop_name: "",
-      consignor_entity_code: "",
-      consignor_freshtrack_id: "",
-      notes: "",
-    });
+    setForm(EMPTY_RULE_FORM);
   }
 
   const createMutation = useMutation({
@@ -433,18 +478,20 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tools-consignor-rules"] });
+      queryClient.invalidateQueries({ queryKey: ["tools-consignor-overview"] });
       setAddOpen(false);
       resetForm();
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (patch: Partial<RuleRow> & { id: string }) => {
-      const { id, ...rest } = patch;
+    mutationFn: async (id: string) => {
+      // An edit is one rule, so it sends one product (or none).
+      const { product_codes, ...rest } = form;
       const res = await fetch(`${BASE}/rules/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rest),
+        body: JSON.stringify({ ...rest, product_code: product_codes[0] ?? "" }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -454,7 +501,9 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tools-consignor-rules"] });
+      queryClient.invalidateQueries({ queryKey: ["tools-consignor-overview"] });
       setEditing(null);
+      resetForm();
     },
   });
 
@@ -492,8 +541,8 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
             <TableHeader>
               <TableRow className="border-sand hover:bg-transparent">
                 <TableHead className="text-xs text-stone">Customer</TableHead>
-                <TableHead className="text-xs text-stone">Crop</TableHead>
-                <TableHead className="text-xs text-stone">Assign consignor</TableHead>
+                <TableHead className="text-xs text-stone">Crop or product</TableHead>
+                <TableHead className="text-xs text-stone">Consignor</TableHead>
                 <TableHead className="text-xs text-stone">Status</TableHead>
                 {isHubAdmin && <TableHead className="w-[80px] text-xs text-stone"></TableHead>}
               </TableRow>
@@ -521,8 +570,29 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-bark">{rule.crop_name ?? "Any"}</TableCell>
-                    <TableCell className="text-bark">{rule.consignor_entity_code}</TableCell>
+                    <TableCell className="max-w-[320px] text-bark">
+                      {rule.product_code ? (
+                        <span className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="shrink-0 border-sand text-stone">
+                            Product
+                          </Badge>
+                          <span className="truncate" title={ruleTarget(rule)}>
+                            {ruleTarget(rule)}
+                          </span>
+                        </span>
+                      ) : (
+                        ruleTarget(rule)
+                      )}
+                    </TableCell>
+                    <TableCell className="text-bark">
+                      {rule.action === "leave_blank" ? (
+                        <Badge variant="outline" className="border-stone/40 text-stone">
+                          Leave blank
+                        </Badge>
+                      ) : (
+                        rule.consignor_entity_code
+                      )}
+                    </TableCell>
                     <TableCell>
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -539,14 +609,17 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
+                            aria-label="Edit rule"
                             onClick={() => {
                               setForm({
                                 consignee_entity_code: rule.consignee_entity_code ?? "",
                                 consignee_freshtrack_id: rule.consignee_freshtrack_id ?? "",
                                 crop_id: rule.crop_id ?? "",
                                 crop_name: rule.crop_name ?? "",
-                                consignor_entity_code: rule.consignor_entity_code,
-                                consignor_freshtrack_id: rule.consignor_freshtrack_id,
+                                product_codes: rule.product_code ? [rule.product_code] : [],
+                                action: rule.action,
+                                consignor_entity_code: rule.consignor_entity_code ?? "",
+                                consignor_freshtrack_id: rule.consignor_freshtrack_id ?? "",
                                 notes: rule.notes ?? "",
                               });
                               setEditing(rule);
@@ -558,10 +631,12 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
+                            aria-label="Delete rule"
                             disabled={deleteMutation.isPending}
                             onClick={() => {
-                              const label = rule.consignee_entity_code ?? "Any customer";
-                              if (confirm(`Delete the ${label} → ${rule.consignor_entity_code} rule?`)) {
+                              const who = rule.consignee_entity_code ?? "Any customer";
+                              const to = rule.action === "leave_blank" ? "leave blank" : rule.consignor_entity_code;
+                              if (confirm(`Delete the ${who} + ${ruleTarget(rule)} → ${to} rule?`)) {
                                 deleteMutation.mutate(rule.id);
                               }
                             }}
@@ -579,15 +654,23 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
         </div>
       )}
 
-      <p className="text-xs text-stone">
-        A customer with no crop-specific rule uses its default (&quot;Any&quot;) rule. A
-        customer with at least one crop-specific rule gets no automatic
-        &quot;Any&quot; fallback — an unmapped crop is left for a human, never guessed.
-      </p>
+      <div className="space-y-1 text-xs text-stone">
+        <p>
+          The most specific rule wins: a product rule, then a crop rule, then the customer&apos;s
+          &quot;Any&quot; rule. At each level the customer&apos;s own rule beats an any-customer rule.
+        </p>
+        <p>
+          &quot;Leave blank&quot; rules never set a consignor — use them for green fruit, whose
+          consignor is set when the farm load is linked. An order that mixes a leave-blank product
+          with an assigned one, or has a product no rule covers, is left for a person under
+          &quot;Needs a decision&quot; — never guessed.
+        </p>
+      </div>
 
       <RuleFormDialog
         open={addOpen || editing !== null}
         title={editing ? "Edit rule" : "Add rule"}
+        editing={editing !== null}
         form={form}
         setForm={setForm}
         onCancel={() => {
@@ -595,7 +678,7 @@ function RulesTab({ isHubAdmin }: { isHubAdmin: boolean }) {
           setEditing(null);
           resetForm();
         }}
-        onSubmit={() => (editing ? updateMutation.mutate({ id: editing.id, ...form, crop_id: form.crop_id || null, crop_name: form.crop_name || null }) : createMutation.mutate())}
+        onSubmit={() => (editing ? updateMutation.mutate(editing.id) : createMutation.mutate())}
         pending={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error?.message ?? updateMutation.error?.message}
       />
@@ -608,6 +691,9 @@ interface RuleForm {
   consignee_freshtrack_id: string;
   crop_id: string;
   crop_name: string;
+  /** FreshTrack product codes. Adding: one rule per code. Editing: at most one. */
+  product_codes: string[];
+  action: "assign" | "leave_blank";
   consignor_entity_code: string;
   consignor_freshtrack_id: string;
   notes: string;
@@ -616,6 +702,7 @@ interface RuleForm {
 function RuleFormDialog({
   open,
   title,
+  editing,
   form,
   setForm,
   onCancel,
@@ -625,6 +712,7 @@ function RuleFormDialog({
 }: {
   open: boolean;
   title: string;
+  editing: boolean;
   form: RuleForm;
   setForm: (f: RuleForm) => void;
   onCancel: () => void;
@@ -632,25 +720,35 @@ function RuleFormDialog({
   pending: boolean;
   error?: string;
 }) {
+  const { data: products, isLoading: productsLoading, error: productsError } = useQuery<PickerProduct[]>({
+    queryKey: ["tools-consignor-products"],
+    queryFn: () => fetchJson<PickerProduct[]>(`${BASE}/products`),
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const hasConsigneeCode = form.consignee_entity_code.trim().length > 0;
   const hasConsigneeId = form.consignee_freshtrack_id.trim().length > 0;
   const consigneeConsistent = hasConsigneeCode === hasConsigneeId;
   const hasCrop = form.crop_id.trim().length > 0;
+  const hasProducts = form.product_codes.length > 0;
+  const leaveBlank = form.action === "leave_blank";
   const valid =
-    Boolean(form.consignor_entity_code.trim()) &&
-    Boolean(form.consignor_freshtrack_id.trim()) &&
     consigneeConsistent &&
-    (hasConsigneeCode || hasCrop);
+    (hasConsigneeCode || hasCrop || hasProducts) &&
+    !(hasCrop && hasProducts) &&
+    (leaveBlank ||
+      (Boolean(form.consignor_entity_code.trim()) && Boolean(form.consignor_freshtrack_id.trim())));
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
-      <DialogContent className="bg-warmwhite sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto bg-warmwhite sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="text-soil">{title}</DialogTitle>
           <DialogDescription className="text-stone">
-            Customer + optional crop → the consignor to assign when it&apos;s blank. Leave
-            the customer fields blank for a rule that applies to ANY customer for that
-            crop — e.g. all Passionfruit via SQBR.
+            Customer + an optional crop or products → the consignor to set when an order&apos;s
+            consignor is blank, or &quot;leave blank&quot;. Leave the customer blank for a rule
+            that applies to ANY customer — e.g. all Passionfruit via SQBR.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -659,7 +757,7 @@ function RuleFormDialog({
               <Input
                 value={form.consignee_entity_code}
                 onChange={(e) => setForm({ ...form, consignee_entity_code: e.target.value })}
-                placeholder="e.g. COLME — blank = Any customer"
+                placeholder="e.g. WOWTO — blank = Any customer"
                 className="border-sand bg-white"
               />
             </Field>
@@ -677,48 +775,85 @@ function RuleFormDialog({
               Customer code and role id must be given together, or both left blank.
             </p>
           )}
+
+          <Field label={editing ? "Product (optional — one per rule when editing)" : "Products (optional — one rule is made for each)"}>
+            {productsLoading ? (
+              <Skeleton className="h-32 rounded-lg" />
+            ) : productsError ? (
+              <p className="text-xs text-blaze">Couldn&apos;t load products from FreshTrack: {productsError.message}</p>
+            ) : (
+              <ProductPicker
+                products={products ?? []}
+                selected={form.product_codes}
+                single={editing}
+                disabled={hasCrop}
+                onChange={(product_codes) => setForm({ ...form, product_codes })}
+              />
+            )}
+            {hasCrop && (
+              <p className="mt-1 text-xs text-stone">Clear the crop to pick products — a rule is for a crop or products, not both.</p>
+            )}
+          </Field>
+
           <div className="grid grid-cols-2 gap-4">
-            <Field label={hasConsigneeCode ? "Crop (optional)" : "Crop *"}>
+            <Field label="Crop (optional)">
               <Input
                 value={form.crop_name}
+                disabled={hasProducts}
                 onChange={(e) => setForm({ ...form, crop_name: e.target.value })}
-                placeholder="e.g. Passionfruit — blank = Any"
-                className="border-sand bg-white"
+                placeholder={hasProducts ? "Not used with products" : "e.g. Passionfruit — blank = Any"}
+                className="border-sand bg-white disabled:opacity-60"
               />
             </Field>
             <Field label="Crop FreshTrack id (if crop set)">
               <Input
                 value={form.crop_id}
+                disabled={hasProducts}
                 onChange={(e) => setForm({ ...form, crop_id: e.target.value })}
                 placeholder="UUID"
-                className="border-sand bg-white font-mono text-xs"
+                className="border-sand bg-white font-mono text-xs disabled:opacity-60"
               />
             </Field>
           </div>
-          {!hasConsigneeCode && !hasCrop && (
+          {!hasConsigneeCode && !hasCrop && !hasProducts && (
             <p className="text-xs text-blaze">
-              A rule needs a customer, a crop, or both — leaving everything blank would
-              match every order.
+              A rule needs a customer, a crop or a product — leaving all three blank would match
+              every order.
             </p>
           )}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Consignor code *">
-              <Input
-                value={form.consignor_entity_code}
-                onChange={(e) => setForm({ ...form, consignor_entity_code: e.target.value })}
-                placeholder="e.g. MMTRU"
-                className="border-sand bg-white"
-              />
-            </Field>
-            <Field label="Consignor FreshTrack role id *">
-              <Input
-                value={form.consignor_freshtrack_id}
-                onChange={(e) => setForm({ ...form, consignor_freshtrack_id: e.target.value })}
-                placeholder="UUID"
-                className="border-sand bg-white font-mono text-xs"
-              />
-            </Field>
-          </div>
+
+          <Field label="When this matches">
+            <select
+              value={form.action}
+              onChange={(e) => setForm({ ...form, action: e.target.value as RuleForm["action"] })}
+              className="h-9 w-full rounded-lg border border-sand bg-white px-2 text-sm"
+            >
+              <option value="assign">Set this consignor</option>
+              <option value="leave_blank">Leave the consignor blank (a person sets it, e.g. green fruit)</option>
+            </select>
+          </Field>
+
+          {!leaveBlank && (
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Consignor code *">
+                <Input
+                  value={form.consignor_entity_code}
+                  onChange={(e) => setForm({ ...form, consignor_entity_code: e.target.value })}
+                  placeholder="e.g. MMANN"
+                  className="border-sand bg-white"
+                />
+              </Field>
+              <Field label="Consignor FreshTrack role id *">
+                <Input
+                  value={form.consignor_freshtrack_id}
+                  onChange={(e) => setForm({ ...form, consignor_freshtrack_id: e.target.value })}
+                  placeholder="UUID"
+                  className="border-sand bg-white font-mono text-xs"
+                />
+              </Field>
+            </div>
+          )}
+
           <Field label="Notes">
             <Input
               value={form.notes}
@@ -739,11 +874,96 @@ function RuleFormDialog({
             disabled={!valid || pending}
             onClick={onSubmit}
           >
-            {pending ? "Saving..." : "Save"}
+            {pending
+              ? "Saving..."
+              : !editing && form.product_codes.length > 1
+                ? `Save ${form.product_codes.length} rules`
+                : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Searchable product list, grouped by crop. Retired products are hidden
+ * unless already chosen. `single` (editing) keeps at most one ticked.
+ */
+function ProductPicker({
+  products,
+  selected,
+  single,
+  disabled,
+  onChange,
+}: {
+  products: PickerProduct[];
+  selected: string[];
+  single: boolean;
+  disabled: boolean;
+  onChange: (codes: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const visible = products.filter(
+    (p) =>
+      (p.isActive || selected.includes(p.code)) &&
+      (!q || `${p.code} ${p.name} ${p.cropName ?? ""}`.toLowerCase().includes(q))
+  );
+  const groups = new Map<string, PickerProduct[]>();
+  for (const p of visible) {
+    const key = p.cropName ?? "No crop";
+    groups.set(key, [...(groups.get(key) ?? []), p]);
+  }
+
+  function toggle(code: string) {
+    if (selected.includes(code)) onChange(selected.filter((c) => c !== code));
+    else onChange(single ? [code] : [...selected, code]);
+  }
+
+  return (
+    <div className={disabled ? "pointer-events-none opacity-60" : ""}>
+      <Input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search by code or name, e.g. 910111 or ripe"
+        className="border-sand bg-white"
+        disabled={disabled}
+      />
+      <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-sand bg-white p-2">
+        {visible.length === 0 ? (
+          <p className="px-1 py-2 text-xs text-stone">No products match.</p>
+        ) : (
+          Array.from(groups.entries()).map(([crop, items]) => (
+            <div key={crop} className="mb-1.5 last:mb-0">
+              <p className="px-1 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-stone">{crop}</p>
+              {items.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs text-bark hover:bg-cream"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(p.code)}
+                    onChange={() => toggle(p.code)}
+                    disabled={disabled}
+                    className="h-3.5 w-3.5 shrink-0 rounded border-sand accent-canopy"
+                  />
+                  <span className="w-14 shrink-0 font-mono text-[11px] text-stone">{p.code}</span>
+                  <span className="truncate" title={p.name}>
+                    {p.name}
+                  </span>
+                  {!p.isActive && <span className="shrink-0 text-[10px] text-stone">(inactive)</span>}
+                </label>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+      <p className="mt-1 text-xs text-stone">
+        {selected.length === 0 ? "None chosen — the rule is for a crop or any product." : `Chosen: ${selected.join(", ")}`}
+      </p>
+    </div>
   );
 }
 
@@ -1332,6 +1552,487 @@ function ReportsTab({ isHubAdmin }: { isHubAdmin: boolean }) {
               </p>
             )}
             {latestRun.error && <p className="text-blaze">{latestRun.error}</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ Marketer fill
+
+interface MarketerSettings {
+  key: string;
+  name: string;
+  enabled: boolean;
+  mode: "dry_run" | "apply";
+  config: {
+    schedule: StoredSchedule;
+    assignable_state_codes: string[];
+    customer_group_codes: string[];
+    marketer_entity_code: string;
+    discovery_lookback_days: number;
+    discovery_horizon_days: number;
+  };
+}
+
+interface MarketerOverview {
+  process: { key: string; name: string; enabled: boolean; mode: string } | null;
+  latestRun: (RunRow & { payload: Record<string, unknown> | null }) | null;
+  scope: {
+    groups: Array<{ code: string; name: string; customerCount: number }>;
+    customers: string[];
+    marketer: { code: string; name: string };
+  } | null;
+  scopeError: string | null;
+}
+
+interface MarketerActivityRow {
+  id: string;
+  target_ref: string | null;
+  consignee_name: string | null;
+  action: string;
+  status: "proposed" | "applied" | "skipped" | "failed";
+  skip_reason: string | null;
+  after: { code?: string; marketer_ft_id?: string | null } | null;
+  error: string | null;
+  created_at: string;
+}
+
+/**
+ * The Woolworths marketer fill (process marketer_auto_fill): one tab holding
+ * its status, who it covers, its settings and its activity, so it can be
+ * switched off in one place once Woolworths EDI sends the marketer itself.
+ */
+function MarketerTab({ isHubAdmin }: { isHubAdmin: boolean }) {
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [groupsDraft, setGroupsDraft] = useState<string | null>(null);
+  const [marketerDraft, setMarketerDraft] = useState<string | null>(null);
+
+  const settingsQ = useQuery<MarketerSettings>({
+    queryKey: ["tools-marketer-settings"],
+    queryFn: () => fetchJson<MarketerSettings>(`${MARKETER_BASE}/settings`),
+  });
+  const overviewQ = useQuery<MarketerOverview>({
+    queryKey: ["tools-marketer-overview"],
+    queryFn: () => fetchJson<MarketerOverview>(`${MARKETER_BASE}/overview`),
+    refetchInterval: 30000,
+  });
+  const activityQ = useQuery<MarketerActivityRow[]>({
+    queryKey: ["tools-marketer-activity", statusFilter],
+    queryFn: () =>
+      fetchJson<MarketerActivityRow[]>(
+        `${MARKETER_BASE}/activity${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`
+      ),
+  });
+  const { data: orderStates } = useQuery<OrderStateOption[]>({
+    queryKey: ["tools-consignor-order-states"],
+    queryFn: () => safeFetch<OrderStateOption[]>(`${BASE}/order-states`),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const refreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["tools-marketer-settings"] });
+    queryClient.invalidateQueries({ queryKey: ["tools-marketer-overview"] });
+    queryClient.invalidateQueries({ queryKey: ["tools-marketer-activity"] });
+  };
+
+  const patchMutation = useMutation({
+    mutationFn: async (patch: Record<string, unknown>) => {
+      const res = await fetch(`${MARKETER_BASE}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to update settings");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setGroupsDraft(null);
+      setMarketerDraft(null);
+      refreshAll();
+    },
+  });
+
+  const runMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(MARKETER_RUN_URL, { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Run failed");
+      if (body.status === "failed") throw new Error(body.error || "Run failed");
+      return body;
+    },
+    onSettled: refreshAll,
+  });
+
+  const undoMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`${MARKETER_BASE}/activity/${id}/undo`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to undo");
+      }
+    },
+    onSettled: refreshAll,
+  });
+
+  if (settingsQ.isLoading) return <Skeleton className="mt-4 h-[320px] rounded-xl" />;
+  if (settingsQ.error || !settingsQ.data) {
+    return (
+      <PanelError
+        className="mt-4"
+        label={settingsQ.error?.message ?? "Failed to load the marketer fill — try refreshing"}
+      />
+    );
+  }
+
+  const settings = settingsQ.data;
+  const cfg = settings.config;
+  const overview = overviewQ.data;
+  const run = overview?.latestRun ?? null;
+  const live = settings.mode === "apply";
+  const rows = activityQ.data ?? [];
+  const groupsValue = groupsDraft ?? cfg.customer_group_codes.join(", ");
+  const marketerValue = marketerDraft ?? cfg.marketer_entity_code;
+
+  const saveConfig = (next: Partial<MarketerSettings["config"]>) =>
+    patchMutation.mutate({ config: { ...cfg, ...next } });
+
+  function toggleState(code: string) {
+    const next = cfg.assignable_state_codes.includes(code)
+      ? cfg.assignable_state_codes.filter((c) => c !== code)
+      : [...cfg.assignable_state_codes, code];
+    saveConfig({ assignable_state_codes: next });
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="rounded-xl border border-sand bg-cream px-4 py-3 text-xs text-bark">
+        Fills a <strong>blank</strong> marketer with {overview?.scope?.marketer.name ?? cfg.marketer_entity_code} on
+        open orders for the customers below, so manually imported Woolworths POs reach the Orders portal. It never
+        changes a marketer that is already set. Meant as a bridge until Woolworths EDI sends the marketer —
+        pause it then.
+      </div>
+
+      {/* Status */}
+      <div className="rounded-xl border border-sand bg-warmwhite p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-soil">Status</span>
+            <Badge
+              variant={live ? "default" : "secondary"}
+              className={live ? "bg-canopy" : "bg-harvest/20 text-harvest"}
+            >
+              {live ? "Live" : "Dry run"}
+            </Badge>
+            {!settings.enabled && (
+              <Badge variant="outline" className="border-stone text-stone">
+                Off
+              </Badge>
+            )}
+          </div>
+          {isHubAdmin && (
+            <Button
+              size="sm"
+              className="bg-canopy text-white hover:bg-canopy/90"
+              disabled={runMutation.isPending || !settings.enabled}
+              onClick={() => runMutation.mutate()}
+              title={!settings.enabled ? "Turn the fill on below first" : undefined}
+            >
+              {runMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+              Run now
+            </Button>
+          )}
+        </div>
+        {runMutation.isError && <p className="mb-3 text-xs text-blaze">{runMutation.error?.message}</p>}
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Blank marketers found" value={run?.candidates_seen ?? 0} />
+          <StatCard
+            label={run?.mode === "apply" ? "Filled" : "Would fill"}
+            value={run?.mode === "apply" ? (run?.actions_applied ?? 0) : (run?.actions_proposed ?? 0)}
+            tone="success"
+          />
+          <StatCard label="Skipped" value={run?.actions_skipped ?? 0} />
+          <StatCard label="Failed" value={run?.actions_failed ?? 0} tone={run && run.actions_failed > 0 ? "danger" : undefined} />
+        </div>
+        <div className="mt-4 space-y-1.5 border-t border-sand pt-3 text-xs text-bark">
+          {run ? (
+            <p>
+              Last run {new Date(run.started_at).toLocaleString("en-AU")} ({run.trigger},{" "}
+              {run.mode === "apply" ? "live" : "dry run"}, {run.status})
+            </p>
+          ) : (
+            <p>No runs yet.</p>
+          )}
+          {run?.error && <p className="text-blaze">{run.error}</p>}
+          {typeof run?.payload?.warning === "string" && <p className="text-harvest">{run.payload.warning}</p>}
+          {run?.payload?.discovery_limit_hit === true && (
+            <p className="text-harvest">This run hit its order limit — some orders may wait for the next run.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Who it covers */}
+      <div className="rounded-xl border border-sand bg-warmwhite p-5">
+        <h3 className="mb-2 text-sm font-semibold text-soil">Who it covers</h3>
+        {overviewQ.isLoading ? (
+          <Skeleton className="h-12 rounded-lg" />
+        ) : overview?.scopeError ? (
+          <p className="flex items-center gap-2 text-xs text-blaze">
+            <XCircle className="h-3.5 w-3.5" />
+            {overview.scopeError}
+          </p>
+        ) : overview?.scope ? (
+          <div className="space-y-1.5 text-xs text-bark">
+            {overview.scope.groups.map((g) => (
+              <p key={g.code}>
+                <span className="font-medium text-soil">{g.name}</span> ({g.code}) — {g.customerCount} customers
+              </p>
+            ))}
+            <p className="text-stone">{overview.scope.customers.join(" · ")}</p>
+            <p>
+              Marketer written: <span className="font-medium text-soil">{overview.scope.marketer.name}</span> (
+              {overview.scope.marketer.code})
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Settings */}
+      <div className="rounded-xl border border-sand bg-warmwhite p-5">
+        {!isHubAdmin && (
+          <p className="mb-4 rounded-lg bg-cream px-3 py-2 text-xs text-bark">
+            Read-only — changing these settings requires Hub Admin.
+          </p>
+        )}
+
+        <Row label="Mode" hint={live ? "Writes to FreshTrack" : "Proposes only — writes nothing"}>
+          <select
+            aria-label="Marketer fill mode"
+            disabled={!isHubAdmin || patchMutation.isPending}
+            value={settings.mode}
+            onChange={(e) => {
+              const mode = e.target.value;
+              if (mode === "apply" && !confirm("Switch the marketer fill to live? It will start writing the marketer to FreshTrack orders.")) return;
+              patchMutation.mutate({ mode });
+            }}
+            className="h-9 w-[160px] rounded-lg border border-sand bg-white px-2 text-sm disabled:opacity-60"
+          >
+            <option value="dry_run">Dry run</option>
+            <option value="apply">Apply</option>
+          </select>
+        </Row>
+
+        <ScheduleField
+          label="Run at"
+          schedule={cfg.schedule}
+          disabled={!isHubAdmin || patchMutation.isPending}
+          onChange={(schedule) => saveConfig({ schedule })}
+        />
+
+        <Row
+          label="Customer groups"
+          hint="Parent customer codes in FreshTrack. Every customer under them is covered. WOWGL = Woolworths."
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Customer groups"
+              value={groupsValue}
+              disabled={!isHubAdmin}
+              onChange={(e) => setGroupsDraft(e.target.value)}
+              className="h-9 w-[180px] border-sand bg-white"
+            />
+            {isHubAdmin && groupsDraft !== null && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={patchMutation.isPending}
+                onClick={() => saveConfig({ customer_group_codes: groupsValue.split(",").map((c) => c.trim()) })}
+              >
+                Save
+              </Button>
+            )}
+          </div>
+        </Row>
+
+        <Row label="Marketer to fill in" hint="Entity code in FreshTrack. MACKM = Mackays Marketing.">
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Marketer code"
+              value={marketerValue}
+              disabled={!isHubAdmin}
+              onChange={(e) => setMarketerDraft(e.target.value)}
+              className="h-9 w-[180px] border-sand bg-white"
+            />
+            {isHubAdmin && marketerDraft !== null && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={patchMutation.isPending}
+                onClick={() => saveConfig({ marketer_entity_code: marketerValue })}
+              >
+                Save
+              </Button>
+            )}
+          </div>
+        </Row>
+
+        <div className="border-b border-sand py-3.5">
+          <p className="text-sm text-soil">Order states</p>
+          <p className="mb-2.5 text-xs text-stone">
+            Only orders in a ticked state are filled. Looks at orders due from{" "}
+            {cfg.discovery_lookback_days} days ago to {cfg.discovery_horizon_days} days ahead.
+          </p>
+          {!orderStates ? (
+            <Skeleton className="h-16 rounded-lg" />
+          ) : (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+              {orderStates.map((state) => (
+                <label
+                  key={state.code}
+                  className={`flex items-center gap-2 text-xs ${isHubAdmin ? "cursor-pointer text-bark" : "text-stone"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={cfg.assignable_state_codes.includes(state.code)}
+                    disabled={!isHubAdmin || patchMutation.isPending}
+                    onChange={() => toggleState(state.code)}
+                    className="h-3.5 w-3.5 rounded border-sand accent-canopy disabled:opacity-60"
+                  />
+                  <span className="font-mono text-[11px] text-stone">{state.code}</span>
+                  {state.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-4">
+          <div>
+            <p className={`text-sm font-medium ${settings.enabled ? "text-blaze" : "text-canopy"}`}>
+              {settings.enabled ? "Turn the fill off" : "Turn the fill on"}
+            </p>
+            <p className="text-xs text-bark">
+              {settings.enabled
+                ? "Stops all scheduled and on-demand runs straight away."
+                : "Off — nothing runs until it is turned on."}
+            </p>
+          </div>
+          {isHubAdmin && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={settings.enabled ? "border-blaze/40 text-blaze" : "border-canopy/40 text-canopy"}
+              disabled={patchMutation.isPending}
+              onClick={() => patchMutation.mutate({ enabled: !settings.enabled })}
+            >
+              {settings.enabled ? "Turn off" : "Turn on"}
+            </Button>
+          )}
+        </div>
+        {patchMutation.isError && <p className="mt-3 text-xs text-blaze">{patchMutation.error?.message}</p>}
+      </div>
+
+      {/* Activity */}
+      <div className="space-y-3">
+        <div className="flex gap-1.5">
+          {(["all", "applied", "proposed", "skipped", "failed"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                statusFilter === s ? "bg-forest text-white" : "bg-sand/60 text-bark hover:bg-sand"
+              }`}
+            >
+              {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        {undoMutation.isError && <p className="text-xs text-blaze">{undoMutation.error?.message}</p>}
+        {activityQ.isLoading ? (
+          <Skeleton className="h-[240px] rounded-xl" />
+        ) : activityQ.error ? (
+          <PanelError label="Failed to load activity — try refreshing" />
+        ) : (
+          <div className="rounded-xl border border-sand bg-warmwhite">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-sand hover:bg-transparent">
+                  <TableHead className="text-xs text-stone">Order</TableHead>
+                  <TableHead className="text-xs text-stone">Customer</TableHead>
+                  <TableHead className="text-xs text-stone">Status</TableHead>
+                  <TableHead className="text-xs text-stone">Detail</TableHead>
+                  <TableHead className="text-xs text-stone">When</TableHead>
+                  {isHubAdmin && <TableHead className="w-[90px] text-xs text-stone"></TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-8 text-center text-sm text-stone">
+                      No activity yet
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  rows.map((row) => (
+                    <TableRow key={row.id} className="border-sand/50">
+                      <TableCell className="font-mono text-xs text-soil">{row.target_ref ?? "—"}</TableCell>
+                      <TableCell className="text-bark">{row.consignee_name ?? "—"}</TableCell>
+                      <TableCell>
+                        <ActivityStatusBadge status={row.status} />
+                      </TableCell>
+                      <TableCell className="max-w-[260px] truncate text-xs text-bark">
+                        {row.action === "clear_marketer"
+                          ? row.status === "applied"
+                            ? "Undone — marketer back to blank"
+                            : (row.error ?? "Undo failed")
+                          : row.status === "applied" || row.status === "proposed"
+                            ? `→ ${row.after?.code ?? "—"}`
+                            : row.status === "failed"
+                              ? (row.error ?? "—")
+                              : reasonLabel(row.skip_reason)}
+                      </TableCell>
+                      <TableCell className="text-xs text-bark">
+                        {new Date(row.created_at).toLocaleString("en-AU", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </TableCell>
+                      {isHubAdmin && (
+                        <TableCell>
+                          {row.status === "applied" && row.action === "set_marketer" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={undoMutation.isPending}
+                              onClick={() => {
+                                const note = settings.enabled
+                                  ? "\n\nThe fill is on, so its next run will fill it again. Turn the fill off first if it should stay blank."
+                                  : "";
+                                if (confirm(`Set the marketer on order ${row.target_ref} back to blank?${note}`)) {
+                                  undoMutation.mutate(row.id);
+                                }
+                              }}
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              Undo
+                            </Button>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>

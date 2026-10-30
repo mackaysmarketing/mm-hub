@@ -13,6 +13,7 @@ import { getUserSession } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { claimRun, releaseRun, logAction } from "@/lib/processes/runner";
 import { unassignConsignor } from "@/lib/processes/consignorAssign/apply";
+import { canUnassignConsignor } from "@/lib/processes/actionGuards";
 
 export const dynamic = "force-dynamic";
 const PROCESS_KEY = "consignor_auto_assign";
@@ -30,12 +31,20 @@ export async function POST(
   const admin = createAdminClient();
   const { data: actionRow, error: fetchErr } = await admin
     .from("process_actions")
-    .select("target_id, target_ref, consignee_name")
+    .select("target_id, target_ref, consignee_name, process_key, action, status")
     .eq("id", id)
     .single();
 
   if (fetchErr || !actionRow) {
     return NextResponse.json({ error: "Activity log entry not found" }, { status: 404 });
+  }
+  // The table also holds marketer-fill rows and rows that wrote nothing.
+  // Only a consignor this tool actually set may be cleared from here.
+  if (!canUnassignConsignor(actionRow as { process_key: string; action: string; status: string })) {
+    return NextResponse.json(
+      { error: "Only a consignor this tool set can be unassigned from here." },
+      { status: 409 }
+    );
   }
 
   const claim = await claimRun(PROCESS_KEY, "manual", "apply", session.hubUser.id);

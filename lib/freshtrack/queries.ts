@@ -386,6 +386,32 @@ export const Q_PRODUCTS_ALL = /* GraphQL */ `
   }
 `;
 
+/**
+ * The rule form's product picker (migration 00024): the full catalogue with
+ * the flags needed to hide retired products, plus crop names for grouping.
+ * Same argument-free `products` field as Q_PRODUCTS_ALL.
+ */
+export const Q_PRODUCTS_FOR_RULES = /* GraphQL */ `
+  query ProductsForRules($cropLimit: Int!) {
+    products {
+      id code name cropId isActive isSellable
+    }
+    crops(filterLimit: $cropLimit) {
+      id code name
+    }
+  }
+`;
+
+export interface FTProductForRules extends FTProductMini {
+  isActive: boolean;
+  isSellable: boolean;
+}
+
+export interface RspProductsForRules {
+  products: FTProductForRules[];
+  crops: FTCrop[];
+}
+
 // --- OrderStateNode (stable codes; drives the cancellation guard) --------
 // Codes are stable strings — prefer them over UUIDs in config. Observed set:
 // OR Ordered, SH Shipped, RI Ready to Invoice, IN Invoiced, RE Remitted,
