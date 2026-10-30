@@ -58,6 +58,8 @@ export interface RawFailureRow {
 export interface RuleLabelInfo {
   consigneeEntityCode: string | null;
   cropName: string | null;
+  /** Product rules (migration 00024): "910111 ripe collars" etc. */
+  productLabel?: string | null;
 }
 
 export interface RawReportData {
@@ -102,8 +104,8 @@ export function resolvePeriodBoundary(
 function ruleLabelFor(info: RuleLabelInfo | undefined): string | null {
   if (!info) return null;
   const customer = info.consigneeEntityCode ?? "Any customer";
-  const crop = info.cropName ?? "any crop";
-  return `${customer} + ${crop}`;
+  const what = info.productLabel ?? info.cropName ?? "any crop";
+  return `${customer} + ${what}`;
 }
 
 /** How many DISTINCT runs has each target_id shown up in, within the history window. */

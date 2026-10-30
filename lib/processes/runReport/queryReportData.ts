@@ -66,6 +66,8 @@ interface RuleLabelSelectRow {
   id: string;
   consignee_entity_code: string | null;
   crop_name: string | null;
+  product_code: string | null;
+  product_name: string | null;
 }
 
 function toRawActionRow(row: ActionSelectRow): RawActionRow {
@@ -184,10 +186,14 @@ export async function fetchRawReportData(): Promise<RawReportData> {
   if (ruleIds.size > 0) {
     const { data: ruleRowsRaw } = await admin
       .from("consignor_assignment_rules")
-      .select("id, consignee_entity_code, crop_name")
+      .select("id, consignee_entity_code, crop_name, product_code, product_name")
       .in("id", Array.from(ruleIds));
     for (const r of (ruleRowsRaw ?? []) as RuleLabelSelectRow[]) {
-      ruleLabelsById.set(r.id, { consigneeEntityCode: r.consignee_entity_code, cropName: r.crop_name });
+      ruleLabelsById.set(r.id, {
+        consigneeEntityCode: r.consignee_entity_code,
+        cropName: r.crop_name,
+        productLabel: r.product_code ? `${r.product_code} ${r.product_name ?? ""}`.trim() : null,
+      });
     }
   }
 
@@ -215,7 +221,7 @@ export async function fetchRawReportData(): Promise<RawReportData> {
       issues: ruleValidation.invalidRules.map(
         (r): RuleHealthIssue => ({
           customerLabel: r.rule.consignee_entity_code ?? "Any customer",
-          consignorCode: r.rule.consignor_entity_code,
+          consignorCode: r.rule.consignor_entity_code ?? "Leave blank",
           reason: r.reason,
         })
       ),

@@ -23,7 +23,7 @@ import {
   type FTProductMini,
 } from "@/lib/freshtrack/queries";
 import { resolveRules } from "./resolveRules";
-import { needsCropResolution, matchOrder } from "./matchOrder";
+import { needsLineResolution, matchOrder, type OrderLine } from "./matchOrder";
 import { checkOrderGuards } from "./guards";
 import { applyConsignor } from "./apply";
 import { maybeSendConflictAlert, type ConflictCandidate } from "./conflictAlert";
@@ -32,9 +32,10 @@ import { logAction, type RunSummary, type ProcessMode } from "../runner";
 const DEFAULT_LOOKBACK_DAYS = 3;
 const DEFAULT_HORIZON_DAYS = 45;
 const DISCOVERY_LIMIT = 1000;
-// Defensive cap on the expensive crop-resolution path (2 extra calls each) —
-// only ever paid by COLEC-like crop-specific customers, whose real volume is
-// a handful a day, so this should never bind in practice.
+// Defensive cap on the expensive line-resolution path (2 extra calls each) —
+// only paid by customers a crop or product rule can reach, so this should
+// never bind in practice. (Named for crops, which came first; the skip-reason
+// slug keeps that name so history still reads.)
 const MAX_CROP_RESOLUTIONS_PER_RUN = 200;
 /** Entity code of the MULTIPLE consignor, for the activity log and alerts. */
 const MULTIPLE_CONSIGNOR_CODE = "MULTI";
@@ -145,6 +146,7 @@ export async function runConsignorAutoAssign(ctx: {
   let skipped = 0;
   let failed = 0;
   let multipleAssigned = 0;
+  let leftBlank = 0;
   let cropResolutionsUsed = 0;
   let productCache: Map<string, FTProductMini> | null = null;
   // Orders this run could not assign because the rules gave no single answer.
@@ -189,12 +191,12 @@ export async function runConsignorAutoAssign(ctx: {
       continue;
     }
 
-    // Step 4a: crop resolution, lazy — only when it could actually affect the
-    // outcome (a customer-specific crop rule, OR any global crop rule at all
-    // — migration 00018). Customers untouched by either never pay these 2
-    // extra calls.
-    let cropIds: string[] | null = null;
-    if (needsCropResolution(validRules, candidate.consigneeId)) {
+    // Step 4a: line resolution, lazy — only when it could actually affect the
+    // outcome (a crop or product rule for this customer, OR any any-customer
+    // crop or product rule — migrations 00018, 00024). Customers untouched by
+    // those never pay these 2 extra calls.
+    let lines: OrderLine[] | null = null;
+    if (needsLineResolution(validRules, candidate.consigneeId)) {
       if (cropResolutionsUsed >= MAX_CROP_RESOLUTIONS_PER_RUN) {
         skipped++;
         await logAction({
@@ -209,11 +211,44 @@ export async function runConsignorAutoAssign(ctx: {
       const cache: { products: Map<string, FTProductMini> | null } = {
         products: productCache,
       };
-      cropIds = await resolveCropIds(candidate.id, cache);
+      lines = await resolveOrderLines(candidate.id, cache);
       productCache = cache.products;
     }
 
-    const match = matchOrder(validRules, candidate.consigneeId, cropIds);
+    const match = matchOrder(validRules, candidate.consigneeId, lines);
+
+    if (match.kind === "left_blank") {
+      // Every product's rule says "leave blank" (green fruit: the farm becomes
+      // the consignor when its load is linked). Expected, so logged but never
+      // raised as a decision.
+      skipped++;
+      leftBlank++;
+      await logAction({
+        ...base,
+        status: "skipped",
+        skipReason: "left_blank_by_rule",
+        after: { matched_rule_ids: match.matchedRuleIds },
+      });
+      continue;
+    }
+    if (match.kind === "mixed_leave_blank") {
+      // Some products stay blank, others have a consignor. No single header is
+      // true and MULTIPLE would hide the blank part, so a person decides.
+      skipped++;
+      await logAction({
+        ...base,
+        status: "skipped",
+        skipReason: "mixed_leave_blank",
+        after: { matched_rule_ids: match.matchedRuleIds, consignor_codes: match.consignorEntityCodes },
+      });
+      conflicts.push({
+        targetId: base.targetId,
+        targetRef: base.targetRef,
+        consigneeName: base.consigneeName,
+        skipReason: "mixed_leave_blank",
+      });
+      continue;
+    }
 
     if (match.kind === "no_rule") {
       skipped++;
@@ -272,13 +307,26 @@ export async function runConsignorAutoAssign(ctx: {
       continue;
     }
 
-    // Either one rule matched, or every crop resolved to a DIFFERENT consignor
-    // and the header becomes MULTIPLE. Both write one consignor to the order;
-    // only the value and the provenance differ.
+    // Either one rule matched, or every product resolved to a DIFFERENT
+    // consignor and the header becomes MULTIPLE. Both write one consignor to
+    // the order; only the value and the provenance differ.
     const isMultiple = match.kind === "multiple";
+    // validateRules guarantees an assign rule carries a consignor, and only
+    // assign rules reach "matched" — the check is the second lock.
     const targetConsignorId = isMultiple
       ? multipleConsignorFtId!
       : match.rule.consignorFreshtrackId;
+    if (!targetConsignorId) {
+      failed++;
+      await logAction({
+        ...base,
+        status: "failed",
+        error: "matched rule has no consignor",
+        ruleId: isMultiple ? null : match.rule.id,
+        after: {},
+      });
+      continue;
+    }
     const ruleId = isMultiple ? null : match.rule.id;
     const after = isMultiple
       ? {
@@ -353,6 +401,8 @@ export async function runConsignorAutoAssign(ctx: {
       // hand — Stage B is not built — so this count is the "how much manual
       // load work did today create" signal.
       multiple_assigned: multipleAssigned,
+      // Orders every product of which a rule says to leave blank (green fruit).
+      left_blank: leftBlank,
       multiple_consignor_configured: multipleConsignorFtId !== null,
       discovery_window: {
         start: deliveryStart.toISOString(),
@@ -363,10 +413,15 @@ export async function runConsignorAutoAssign(ctx: {
   };
 }
 
-async function resolveCropIds(
+/**
+ * The distinct products on the order's latest version, each with its crop.
+ * A product missing from the catalogue keeps its id with crop null, so a
+ * product rule or a customer default can still decide it.
+ */
+async function resolveOrderLines(
   orderId: string,
   cache: { products: Map<string, FTProductMini> | null }
-): Promise<string[]> {
+): Promise<OrderLine[]> {
   const vRes = await gqlQuery<RspOrderVersions>(Q_ORDER_VERSIONS_BY_ORDER, { orderId });
   if (vRes.orderVersions.length === 0) return [];
   const latest = vRes.orderVersions.reduce((a, b) => (b.versionNo > a.versionNo ? b : a));
@@ -381,11 +436,11 @@ async function resolveCropIds(
     cache.products = new Map(pRes.products.map((p) => [p.id, p]));
   }
 
-  const cropIds = new Set<string>();
+  const byProduct = new Map<string, OrderLine>();
   for (const item of iRes.orderItems) {
-    if (!item.productId) continue;
+    if (!item.productId || byProduct.has(item.productId)) continue;
     const product = cache.products.get(item.productId);
-    if (product?.cropId) cropIds.add(product.cropId);
+    byProduct.set(item.productId, { productId: item.productId, cropId: product?.cropId ?? null });
   }
-  return Array.from(cropIds);
+  return Array.from(byProduct.values());
 }

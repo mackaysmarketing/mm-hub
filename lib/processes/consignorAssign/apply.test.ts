@@ -61,12 +61,15 @@ function script(before: FTOrder, after: FTOrder) {
       sent.push(vars?.orderData as Record<string, unknown>);
       return { updateOrder: { order: after } } as never;
     }
-    throw new Error(`unexpected query ${query.slice(0, 40)}`);
+    throw new Error(`unexpected query ${String(query).slice(0, 40)}`);
   });
   return sent;
 }
 
-beforeEach(() => mockGql.mockReset());
+// Braces matter: a beforeEach that returns a function has it run as teardown.
+beforeEach(() => {
+  mockGql.mockReset();
+});
 
 describe("applyMarketer", () => {
   it("fills a blank marketer and changes nothing else on the order", async () => {
